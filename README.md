@@ -42,6 +42,9 @@ canonical telemetry event that changes vehicle state is broadcast as a
 `vehicle.updated` `RealtimeEvent<VehicleSnapshot>` envelope — no aggregation
 yet (that's Milestone 3 / ADR-010).
 
+CORS is open to `WEB_ORIGIN` (default `http://localhost:3000`) so `apps/web`
+can call the REST endpoints directly from the browser.
+
 On startup, `apps/api` constructs an `OpenSkyAdapter` and polls it every
 `OPENSKY_POLL_INTERVAL_MS` (default 15s), publishing each canonical event onto
 the in-process event bus, which drives the Postgres upsert and WebSocket
@@ -49,6 +52,17 @@ broadcast above. A failed poll is logged and retried with exponential
 backoff (capped, resetting after the next success) rather than crashing the
 process or hammering OpenSky (RFC-001 "transient provider failures use
 bounded retry/backoff").
+
+`apps/web` (`http://localhost:3000`) is the fleet dashboard: a table of
+vehicles (id, position, speed, heading, connectivity, last telemetry time)
+fetched from `GET /vehicles` on load via TanStack Query, kept live by a
+`GET /ws` subscription that applies `vehicle.updated` deltas onto the same
+client-side cache — one cache, not REST and WebSocket state living
+separately (RFC-002). The connection badge in the header reflects the socket
+state (`connecting` / `live` / `closed`); on reconnect the client refetches
+the REST snapshot first in case updates were missed while disconnected, then
+resumes applying deltas, with exponential backoff (500ms–15s) between
+reconnect attempts.
 
 ## Workspace layout
 
@@ -58,7 +72,11 @@ bounded retry/backoff").
 - `apps/telemetry-publisher` — synthetic MQTT vehicle-health simulator
   (stands in for a real IoT fleet; see `../mqtt publisher.md`)
 - `packages/contracts` — shared Zod schemas (`CanonicalTelemetryEvent`,
-  realtime event envelope) used by both `api` and `web`
+  realtime event envelope) used by both `api` and `web`, built to `dist/`
+  (`npm run build --workspace=@repo/contracts`) so both `apps/api` (tsx/Node,
+  `NodeNext` resolution) and `apps/web` (Next.js/Turbopack bundling) resolve
+  the same compiled output — `npm run dev` builds it automatically first via
+  Turborepo's `^build` dependency
 - `packages/ui`, `packages/eslint-config`, `packages/typescript-config` —
   shared workspace tooling
 
@@ -89,6 +107,8 @@ build on every push and PR.
   ADR-004's lean away from ORM complexity for the MVP.
 - **Validation**: `Zod`, shared between `apps/api` and `apps/web` via
   `packages/contracts`.
+- **Client data**: `@tanstack/react-query` on `apps/web`, one cache fed by
+  both the REST snapshot and WebSocket deltas.
 - **Tests**: `Vitest`.
 - **MQTT source**: no usable public vehicle-health feed exists, so
   `apps/telemetry-publisher` simulates one and publishes to a local

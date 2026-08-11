@@ -1,4 +1,5 @@
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
+import fastifyCors from "@fastify/cors";
 import fastifyWebsocket from "@fastify/websocket";
 import type { Pool } from "pg";
 import type { EventBus } from "./event-bus/event-bus.js";
@@ -21,6 +22,9 @@ export async function buildApp(deps: {
     },
   });
 
+  await app.register(fastifyCors, {
+    origin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
+  });
   await app.register(fastifyWebsocket);
 
   const vehicleRepository = new PostgresVehicleRepository(deps.db);

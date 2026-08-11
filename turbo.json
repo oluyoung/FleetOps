@@ -9,7 +9,10 @@
     "TELEMETRY_PUSH_INTERVAL_MS",
     "OPENSKY_CLIENT_ID",
     "OPENSKY_CLIENT_SECRET",
-    "OPENSKY_POLL_INTERVAL_MS"
+    "OPENSKY_POLL_INTERVAL_MS",
+    "WEB_ORIGIN",
+    "NEXT_PUBLIC_API_URL",
+    "NEXT_PUBLIC_WS_URL"
   ],
   "tasks": {
     "build": {
@@ -27,6 +30,7 @@
       "dependsOn": ["^build"]
     },
     "dev": {
+      "dependsOn": ["^build"],
       "cache": false,
       "persistent": true
     }
