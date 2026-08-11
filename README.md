@@ -103,14 +103,25 @@ Open-Meteo it's push-driven rather than polled, so it just buffers messages
 as they arrive and the same `startIngestionLoop` (on a fast
 `MQTT_POLL_INTERVAL_MS`, default 1s) drains the buffer instead of fetching;
 this is what proves the `ProviderAdapter` boundary generalises across
-transport shapes, not just providers (ADR-005). MQTT vehicle ids are
-namespaced `mqtt-{vehicleId}` (distinct from `opensky-{icao24}`) since
-Step 13 (unifying multi-source identity) hasn't landed yet, so an MQTT
-"vehicle" is currently its own row with no position — it goes through the
-same full-overwrite `upsertFromTelemetry` path as OpenSky (it establishes
-its own identity rather than enriching one, unlike Open-Meteo). If the
-broker is unreachable at startup, `poll()` rejects and the ingestion loop's
-own backoff retries the connection — same as any other provider failure.
+transport shapes, not just providers (ADR-005). It goes through the same
+full-overwrite `upsertFromTelemetry` path as OpenSky (it establishes its own
+identity rather than enriching one, unlike Open-Meteo). If the broker is
+unreachable at startup, `poll()` rejects and the ingestion loop's own backoff
+retries the connection — same as any other provider failure.
+
+Both `OpenSkyAdapter` and `MqttAdapter` still map their raw provider payload
+to a provider-namespaced id first (`opensky-{icao24}`, `mqtt-{vehicleId}`),
+but `apps/api/src/index.ts` wraps each of them in an `IdentityResolvingAdapter`
+before handing them to `startIngestionLoop`. That wrapper resolves the
+provider-namespaced id through `VehicleIdentityResolver` (backed by the
+`vehicle_identities` table, migration `1755200000000_create-vehicle-identities`)
+into a FleetOps-owned canonical `vehicleId` (a UUID unrelated to any
+provider's id format) before the event is published — the same
+`(source, providerRef)` pair always resolves to the same canonical id, so
+`vehicleId` is never provider-owned (ADR-005, Step 13). `WeatherAdapter` is
+never wrapped: it already reads an existing canonical `vehicleId` off
+`VehicleRepository` and resolving it again would mint a spurious second
+identity for the same vehicle.
 
 `apps/web` (`http://localhost:3000`) is the fleet dashboard: a table of
 vehicles (id, position, speed, heading, connectivity, ambient temperature,
@@ -172,10 +183,10 @@ adapter/event-bus/repository boundaries held up before Milestone 2
 generalises them to Open-Meteo and MQTT.
 
 Milestone 2 is underway: the Open-Meteo `WeatherAdapter` (`IMPLEMENTATION_PLAN.md`
-Step 11) and the MQTT `MqttAdapter` (Step 12) are both wired in and verified
-end to end against live Postgres/Open-Meteo/Mosquitto — see the sections
-above. Provider ID mapping / multi-source vehicle identity (Step 13) is
-next.
+Step 11), the MQTT `MqttAdapter` (Step 12), and provider ID mapping via
+`VehicleIdentityResolver`/`IdentityResolvingAdapter` (Step 13) are all wired
+in and verified end to end against live Postgres/Open-Meteo/Mosquitto — see
+the sections above. The Milestone 2 checkpoint (Step 14) is next.
 
 ## Tooling decisions
 

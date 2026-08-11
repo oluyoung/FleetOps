@@ -33,9 +33,10 @@ export function mapHealthPayloadToEvent(
 
   const candidate = {
     eventId: parsed.data.eventId ?? crypto.randomUUID(),
-    // Provider-owned ids are namespaced per ADR-005 so they can never
-    // collide with another source's identity space before Step 13 unifies
-    // multi-source vehicle identity.
+    // This is still a provider-namespaced id, not the final canonical
+    // vehicleId — it only exists to keep it out of other sources' id space
+    // until IdentityResolvingAdapter (Step 13) resolves it to the
+    // FleetOps-owned canonical vehicleId at the ingestion boundary.
     vehicleId: `mqtt-${parsed.data.vehicleId}`,
     source: "mqtt" as const,
     occurredAt: heartbeat.toISOString(),

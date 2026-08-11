@@ -7,11 +7,20 @@ import type { DomainEvent } from "./event-bus/domain-events.js";
 import { loadOpenSkyCredentials, OpenSkyAdapter } from "./adapters/opensky.js";
 import { WeatherAdapter } from "./adapters/open-meteo.js";
 import { MqttAdapter } from "./adapters/mqtt.js";
+import { IdentityResolvingAdapter } from "./adapters/identity-resolving-adapter.js";
 import { startIngestionLoop } from "./ingestion/ingestion-loop.js";
+import { PostgresVehicleIdentityResolver } from "./vehicles/vehicle-identity-resolver.js";
 
 const db = createDbPool();
 const eventBus = new InMemoryEventBus<DomainEvent>();
 const { app, vehicleRepository } = await buildApp({ db, eventBus });
+
+// Per ADR-005/Step 13: OpenSky and MQTT both establish vehicle identity, so
+// both are wrapped to resolve their raw provider id into one FleetOps-owned
+// canonical vehicleId (see VehicleIdentityResolver). Open-Meteo is never
+// wrapped — it enriches an existing canonical vehicleId and must not mint a
+// new identity for it.
+const identityResolver = new PostgresVehicleIdentityResolver(db);
 
 const openSkyCredentials =
   loadOpenSkyCredentials() ??
@@ -28,7 +37,10 @@ if (!openSkyCredentials) {
 }
 
 const openSkyIngestion = startIngestionLoop({
-  adapter: new OpenSkyAdapter(fetch, undefined, undefined, openSkyCredentials),
+  adapter: new IdentityResolvingAdapter(
+    new OpenSkyAdapter(fetch, undefined, undefined, openSkyCredentials),
+    identityResolver,
+  ),
   eventBus,
   log: app.log,
   pollIntervalMs: env.openSkyPollIntervalMs,
@@ -51,7 +63,7 @@ const weatherIngestion = startIngestionLoop({
 // Open-Meteo ingestion.
 const mqttAdapter = new MqttAdapter(env.mqttUrl);
 const mqttIngestion = startIngestionLoop({
-  adapter: mqttAdapter,
+  adapter: new IdentityResolvingAdapter(mqttAdapter, identityResolver),
   eventBus,
   log: app.log,
   pollIntervalMs: env.mqttPollIntervalMs,
