@@ -1,5 +1,5 @@
 {
-  "name": "oxa",
+  "name": "fleetops",
   "private": true,
   "scripts": {
     "build": "turbo run build",
