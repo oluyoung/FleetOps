@@ -6,6 +6,7 @@ import { InMemoryEventBus } from "./event-bus/in-memory-event-bus.js";
 import type { DomainEvent } from "./event-bus/domain-events.js";
 import { loadOpenSkyCredentials, OpenSkyAdapter } from "./adapters/opensky.js";
 import { WeatherAdapter } from "./adapters/open-meteo.js";
+import { MqttAdapter } from "./adapters/mqtt.js";
 import { startIngestionLoop } from "./ingestion/ingestion-loop.js";
 
 const db = createDbPool();
@@ -43,6 +44,19 @@ const weatherIngestion = startIngestionLoop({
   pollIntervalMs: env.openMeteoPollIntervalMs,
 });
 
+// Vehicle-health telemetry from apps/telemetry-publisher, streamed over
+// MQTT rather than polled — proves the ProviderAdapter boundary generalises
+// across transport shapes, not just providers (ADR-005). It runs on its own
+// ingestion loop/backoff too, so a broker outage can't affect OpenSky or
+// Open-Meteo ingestion.
+const mqttAdapter = new MqttAdapter(env.mqttUrl);
+const mqttIngestion = startIngestionLoop({
+  adapter: mqttAdapter,
+  eventBus,
+  log: app.log,
+  pollIntervalMs: env.mqttPollIntervalMs,
+});
+
 app
   .listen({ port: env.port, host: "0.0.0.0" })
   .catch((error: unknown) => {
@@ -53,6 +67,8 @@ app
 async function shutdown() {
   openSkyIngestion.stop();
   weatherIngestion.stop();
+  mqttIngestion.stop();
+  mqttAdapter.disconnect();
   await app.close();
   await db.end();
   process.exit(0);

@@ -94,6 +94,24 @@ Because it runs on its own independent ingestion loop with its own
 try/catch + backoff, an Open-Meteo outage or slow response can never block
 or delay OpenSky ingestion.
 
+`apps/telemetry-publisher` simulates a fleet of IoT vehicle-health sensors,
+publishing battery/motor-temperature/connectivity readings once a second to
+`fleet/{vehicleId}/health` on the local Mosquitto broker (`docker-compose.yml`).
+`apps/api`'s `MqttAdapter` subscribes to `fleet/+/health` once on startup and
+maps each message to a `mqtt`-sourced canonical event — unlike OpenSky/
+Open-Meteo it's push-driven rather than polled, so it just buffers messages
+as they arrive and the same `startIngestionLoop` (on a fast
+`MQTT_POLL_INTERVAL_MS`, default 1s) drains the buffer instead of fetching;
+this is what proves the `ProviderAdapter` boundary generalises across
+transport shapes, not just providers (ADR-005). MQTT vehicle ids are
+namespaced `mqtt-{vehicleId}` (distinct from `opensky-{icao24}`) since
+Step 13 (unifying multi-source identity) hasn't landed yet, so an MQTT
+"vehicle" is currently its own row with no position — it goes through the
+same full-overwrite `upsertFromTelemetry` path as OpenSky (it establishes
+its own identity rather than enriching one, unlike Open-Meteo). If the
+broker is unreachable at startup, `poll()` rejects and the ingestion loop's
+own backoff retries the connection — same as any other provider failure.
+
 `apps/web` (`http://localhost:3000`) is the fleet dashboard: a table of
 vehicles (id, position, speed, heading, connectivity, ambient temperature,
 wind speed, last telemetry time) fetched from `GET /vehicles` on load via
@@ -154,8 +172,10 @@ adapter/event-bus/repository boundaries held up before Milestone 2
 generalises them to Open-Meteo and MQTT.
 
 Milestone 2 is underway: the Open-Meteo `WeatherAdapter` (`IMPLEMENTATION_PLAN.md`
-Step 11) is wired in and verified end to end against live Postgres/Open-Meteo
-— see the Open-Meteo section above. MQTT (Step 12) is next.
+Step 11) and the MQTT `MqttAdapter` (Step 12) are both wired in and verified
+end to end against live Postgres/Open-Meteo/Mosquitto — see the sections
+above. Provider ID mapping / multi-source vehicle identity (Step 13) is
+next.
 
 ## Tooling decisions
 

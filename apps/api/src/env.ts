@@ -10,6 +10,9 @@ export const env = {
   port: Number(process.env.PORT ?? 4000),
   databaseUrl: required("DATABASE_URL"),
   mqttUrl: process.env.MQTT_URL ?? "mqtt://localhost:1883",
+  // MQTT is push-driven, not polled — this just governs how often the
+  // ingestion loop drains the adapter's buffered messages.
+  mqttPollIntervalMs: Number(process.env.MQTT_POLL_INTERVAL_MS ?? 1000),
   telemetryPushIntervalMs: Number(
     process.env.TELEMETRY_PUSH_INTERVAL_MS ?? 500,
   ),
