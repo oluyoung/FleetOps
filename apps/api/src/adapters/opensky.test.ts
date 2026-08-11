@@ -116,4 +116,62 @@ describe("OpenSkyAdapter.poll", () => {
 
     await expect(adapter.poll()).rejects.toThrow("OpenSky request failed");
   });
+
+  it("bounds the fleet to a fixed, deterministic set of vehicles", async () => {
+    const states = ["ccc", "aaa", "bbb", "ddd"].map((icao24) =>
+      stateVector({ 0: icao24 }),
+    );
+    const adapter = new OpenSkyAdapter(
+      fakeFetch({ time: 1_700_000_000, states }),
+      undefined,
+      2,
+    );
+
+    const events = await adapter.poll();
+
+    expect(events.map((e) => e.vehicleId).sort()).toEqual([
+      "opensky-aaa",
+      "opensky-bbb",
+    ]);
+  });
+
+  it("keeps reporting the same fleet across polls even as the global feed changes", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({
+          time: 1_700_000_000,
+          states: ["aaa", "bbb", "ccc"].map((icao24) =>
+            stateVector({ 0: icao24 }),
+          ),
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({
+          time: 1_700_000_100,
+          // "aaa" drops out, a new "zzz" appears
+          states: ["bbb", "ccc", "zzz"].map((icao24) =>
+            stateVector({ 0: icao24 }),
+          ),
+        }),
+      }) as unknown as typeof fetch;
+    const adapter = new OpenSkyAdapter(fetchFn, undefined, 2);
+
+    const first = await adapter.poll();
+    const second = await adapter.poll();
+
+    expect(first.map((e) => e.vehicleId).sort()).toEqual([
+      "opensky-aaa",
+      "opensky-bbb",
+    ]);
+    // "aaa" is still the pinned fleet, so it's just absent this poll —
+    // "zzz" never gets reported even though it's in the raw feed.
+    expect(second.map((e) => e.vehicleId).sort()).toEqual(["opensky-bbb"]);
+  });
 });

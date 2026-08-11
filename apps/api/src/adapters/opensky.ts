@@ -67,12 +67,25 @@ export function mapStateVectorToEvent(
   return parsed.success ? parsed.data : null;
 }
 
+const DEFAULT_FLEET_SIZE = 15;
+
 export class OpenSkyAdapter implements ProviderAdapter {
   readonly source = "opensky" as const;
+
+  // OpenSky's public /states/all is a global feed (~9-10k aircraft) with no
+  // per-request filter that reliably yields a small, stable set — a bounding
+  // box still returns a varying count as aircraft enter/leave the region.
+  // FleetOps is a fleet dashboard, not a global tracker, so on the first
+  // successful poll we pin a fixed-size set of vehicleIds (sorted for
+  // determinism) and only ever report on that set afterwards. A vehicle
+  // that drops out of a later poll just stops updating — its last known
+  // state stands — rather than being replaced by a different aircraft.
+  private fleetVehicleIds: ReadonlySet<string> | null = null;
 
   constructor(
     private readonly fetchFn: typeof fetch = fetch,
     private readonly url: string = OPENSKY_STATES_URL,
+    private readonly fleetSize: number = DEFAULT_FLEET_SIZE,
   ) {}
 
   async poll(): Promise<CanonicalTelemetryEvent[]> {
@@ -92,6 +105,16 @@ export class OpenSkyAdapter implements ProviderAdapter {
       const event = mapStateVectorToEvent(vector);
       if (event) events.push(event);
     }
-    return events;
+
+    if (!this.fleetVehicleIds) {
+      this.fleetVehicleIds = new Set(
+        events
+          .map((event) => event.vehicleId)
+          .sort()
+          .slice(0, this.fleetSize),
+      );
+    }
+
+    return events.filter((event) => this.fleetVehicleIds?.has(event.vehicleId));
   }
 }
