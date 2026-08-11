@@ -8,7 +8,8 @@
     "MQTT_URL",
     "TELEMETRY_PUSH_INTERVAL_MS",
     "OPENSKY_CLIENT_ID",
-    "OPENSKY_CLIENT_SECRET"
+    "OPENSKY_CLIENT_SECRET",
+    "OPENSKY_POLL_INTERVAL_MS"
   ],
   "tasks": {
     "build": {

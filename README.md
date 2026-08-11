@@ -33,16 +33,22 @@ npm run dev             # web (3000), docs (3001), api (4000), telemetry-publish
 
 `GET http://localhost:4000/health` should return `{"status":"ok"}` once
 Postgres is reachable. `GET /vehicles` and `GET /vehicles/:id` return the
-current vehicle snapshot(s) from Postgres (404 for an unknown id) — no
-telemetry has been ingested into the DB yet (Step 8), so both return an
-empty/404 result until the OpenSky ingestion loop is wired up.
+current vehicle snapshot(s) from Postgres (404 for an unknown id), populated
+by the OpenSky ingestion loop described below.
 
 `GET /ws` upgrades to a WebSocket connection subscribed to the single
 hardcoded `fleet:default` scope (multi-tenancy is out of scope for M1). Every
 canonical telemetry event that changes vehicle state is broadcast as a
 `vehicle.updated` `RealtimeEvent<VehicleSnapshot>` envelope — no aggregation
-yet (that's Milestone 3 / ADR-010). With no ingestion loop wired up yet
-(Step 8), connecting won't receive any messages until then.
+yet (that's Milestone 3 / ADR-010).
+
+On startup, `apps/api` constructs an `OpenSkyAdapter` and polls it every
+`OPENSKY_POLL_INTERVAL_MS` (default 15s), publishing each canonical event onto
+the in-process event bus, which drives the Postgres upsert and WebSocket
+broadcast above. A failed poll is logged and retried with exponential
+backoff (capped, resetting after the next success) rather than crashing the
+process or hammering OpenSky (RFC-001 "transient provider failures use
+bounded retry/backoff").
 
 ## Workspace layout
 

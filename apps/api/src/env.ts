@@ -13,4 +13,5 @@ export const env = {
   telemetryPushIntervalMs: Number(
     process.env.TELEMETRY_PUSH_INTERVAL_MS ?? 500,
   ),
+  openSkyPollIntervalMs: Number(process.env.OPENSKY_POLL_INTERVAL_MS ?? 15000),
 };
