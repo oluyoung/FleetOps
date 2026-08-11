@@ -37,6 +37,13 @@ current vehicle snapshot(s) from Postgres (404 for an unknown id) — no
 telemetry has been ingested into the DB yet (Step 8), so both return an
 empty/404 result until the OpenSky ingestion loop is wired up.
 
+`GET /ws` upgrades to a WebSocket connection subscribed to the single
+hardcoded `fleet:default` scope (multi-tenancy is out of scope for M1). Every
+canonical telemetry event that changes vehicle state is broadcast as a
+`vehicle.updated` `RealtimeEvent<VehicleSnapshot>` envelope — no aggregation
+yet (that's Milestone 3 / ADR-010). With no ingestion loop wired up yet
+(Step 8), connecting won't receive any messages until then.
+
 ## Workspace layout
 
 - `apps/web` — Next.js fleet dashboard

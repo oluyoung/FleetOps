@@ -36,7 +36,9 @@ function toSnapshot(row: VehicleRow): VehicleSnapshot {
  * telemetry is not retained indefinitely.
  */
 export interface VehicleRepository {
-  upsertFromTelemetry(event: CanonicalTelemetryEvent): Promise<void>;
+  upsertFromTelemetry(
+    event: CanonicalTelemetryEvent,
+  ): Promise<VehicleSnapshot | null>;
   findAll(): Promise<VehicleSnapshot[]>;
   findById(id: string): Promise<VehicleSnapshot | null>;
 }
@@ -44,7 +46,9 @@ export interface VehicleRepository {
 export class PostgresVehicleRepository implements VehicleRepository {
   constructor(private readonly db: Pool) {}
 
-  async upsertFromTelemetry(event: CanonicalTelemetryEvent): Promise<void> {
+  async upsertFromTelemetry(
+    event: CanonicalTelemetryEvent,
+  ): Promise<VehicleSnapshot | null> {
     const { telemetry } = event;
 
     // ON CONFLICT ... WHERE guards against stale/out-of-order events in the
@@ -53,7 +57,7 @@ export class PostgresVehicleRepository implements VehicleRepository {
     // `xmax = 0` trick tells us whether this was a first-seen insert, which
     // is the only "meaningful" transition M1 (OpenSky-only, no connectivity
     // signal) can detect.
-    const result = await this.db.query<{ inserted: boolean }>(
+    const result = await this.db.query<VehicleRow & { inserted: boolean }>(
       `
       INSERT INTO vehicles (
         id, latitude, longitude, altitude_meters, speed_mps,
@@ -72,7 +76,7 @@ export class PostgresVehicleRepository implements VehicleRepository {
         last_seen_source = EXCLUDED.last_seen_source,
         last_updated_at = EXCLUDED.last_updated_at
       WHERE vehicles.last_updated_at < EXCLUDED.last_updated_at
-      RETURNING (xmax = 0) AS inserted
+      RETURNING *, (xmax = 0) AS inserted
       `,
       [
         event.vehicleId,
@@ -90,28 +94,31 @@ export class PostgresVehicleRepository implements VehicleRepository {
 
     if (result.rowCount === 0) {
       // Stale event: occurredAt was not newer than the stored state.
-      return;
+      return null;
     }
 
-    const wasFirstSeen = result.rows[0]?.inserted === true;
-    if (!wasFirstSeen) return;
+    const row = result.rows[0]!;
+    const wasFirstSeen = row.inserted === true;
+    if (wasFirstSeen) {
+      await this.db.query(
+        `
+        INSERT INTO vehicle_events (
+          id, vehicle_id, source, occurred_at, received_at, telemetry
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        `,
+        [
+          crypto.randomUUID(),
+          event.vehicleId,
+          event.source,
+          event.occurredAt,
+          event.receivedAt,
+          JSON.stringify(telemetry),
+        ],
+      );
+    }
 
-    await this.db.query(
-      `
-      INSERT INTO vehicle_events (
-        id, vehicle_id, source, occurred_at, received_at, telemetry
-      )
-      VALUES ($1, $2, $3, $4, $5, $6)
-      `,
-      [
-        crypto.randomUUID(),
-        event.vehicleId,
-        event.source,
-        event.occurredAt,
-        event.receivedAt,
-        JSON.stringify(telemetry),
-      ],
-    );
+    return toSnapshot(row);
   }
 
   async findAll(): Promise<VehicleSnapshot[]> {

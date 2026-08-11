@@ -13,6 +13,7 @@
     "migrate": "node-pg-migrate"
   },
   "dependencies": {
+    "@fastify/websocket": "^11.3.0",
     "@repo/contracts": "*",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1",
@@ -24,10 +25,12 @@
     "@repo/typescript-config": "*",
     "@types/node": "^22.15.3",
     "@types/pg": "^8.11.10",
+    "@types/ws": "^8.18.1",
     "eslint": "^9.39.1",
     "node-pg-migrate": "^7.9.1",
     "tsx": "^4.19.2",
     "typescript": "5.9.2",
-    "vitest": "^3.0.5"
+    "vitest": "^3.0.5",
+    "ws": "^8.21.3"
   }
 }

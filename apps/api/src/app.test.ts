@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import type { Pool } from "pg";
+import WebSocket from "ws";
 import { buildApp } from "./app.js";
 import { InMemoryEventBus } from "./event-bus/in-memory-event-bus.js";
 import type { DomainEvent } from "./event-bus/domain-events.js";
@@ -12,7 +13,7 @@ function fakePool(rows: unknown[] = []): Pool {
 
 describe("GET /health", () => {
   it("returns ok when the database responds", async () => {
-    const app = buildApp({
+    const app = await buildApp({
       db: fakePool(),
       eventBus: new InMemoryEventBus<DomainEvent>(),
     });
@@ -36,7 +37,7 @@ describe("GET /vehicles", () => {
       last_seen_source: "opensky",
       last_updated_at: new Date("2026-01-01T00:00:00.000Z"),
     };
-    const app = buildApp({
+    const app = await buildApp({
       db: fakePool([row]),
       eventBus: new InMemoryEventBus<DomainEvent>(),
     });
@@ -61,7 +62,7 @@ describe("GET /vehicles", () => {
 
 describe("GET /vehicles/:id", () => {
   it("returns 404 when the vehicle does not exist", async () => {
-    const app = buildApp({
+    const app = await buildApp({
       db: fakePool([]),
       eventBus: new InMemoryEventBus<DomainEvent>(),
     });
@@ -70,5 +71,63 @@ describe("GET /vehicles/:id", () => {
       url: "/vehicles/does-not-exist",
     });
     expect(response.statusCode).toBe(404);
+  });
+});
+
+describe("GET /ws", () => {
+  let closeServer: (() => Promise<void>) | undefined;
+
+  afterEach(async () => {
+    await closeServer?.();
+    closeServer = undefined;
+  });
+
+  it("broadcasts a vehicle.updated event when telemetry is upserted", async () => {
+    const row = {
+      id: "opensky-abc123",
+      latitude: 51.5,
+      longitude: -0.12,
+      altitude_meters: null,
+      speed_mps: 200,
+      heading_degrees: 90,
+      battery_percent: null,
+      connectivity: null,
+      last_seen_source: "opensky",
+      last_updated_at: new Date("2026-01-01T00:00:00.000Z"),
+      inserted: true,
+    };
+    const eventBus = new InMemoryEventBus<DomainEvent>();
+    const app = await buildApp({ db: fakePool([row]), eventBus });
+    const address = await app.listen({ port: 0, host: "127.0.0.1" });
+    closeServer = () => app.close();
+
+    const ws = new WebSocket(`${address.replace("http", "ws")}/ws`);
+    await new Promise((resolve, reject) => {
+      ws.once("open", resolve);
+      ws.once("error", reject);
+    });
+    const received = new Promise((resolve) => {
+      ws.once("message", (data: Buffer) => resolve(JSON.parse(data.toString())));
+    });
+
+    await eventBus.publish({
+      type: "telemetry.received",
+      event: {
+        eventId: "8b1b1b1b-1b1b-4b1b-8b1b-1b1b1b1b1b1b",
+        vehicleId: "opensky-abc123",
+        source: "opensky",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        receivedAt: "2026-01-01T00:00:01.000Z",
+        telemetry: { latitude: 51.5, longitude: -0.12, speedMps: 200 },
+      },
+    });
+
+    expect(await received).toMatchObject({
+      type: "vehicle.updated",
+      scope: "fleet:default",
+      entityId: "opensky-abc123",
+      sequence: 1,
+    });
+    ws.terminate();
   });
 });

@@ -7,7 +7,7 @@ import type { DomainEvent } from "./event-bus/domain-events.js";
 
 const db = createDbPool();
 const eventBus = new InMemoryEventBus<DomainEvent>();
-const app = buildApp({ db, eventBus });
+const app = await buildApp({ db, eventBus });
 
 app
   .listen({ port: env.port, host: "0.0.0.0" })

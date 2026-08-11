@@ -1,22 +1,40 @@
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
+import fastifyWebsocket from "@fastify/websocket";
 import type { Pool } from "pg";
 import type { EventBus } from "./event-bus/event-bus.js";
 import type { DomainEvent } from "./event-bus/domain-events.js";
 import { PostgresVehicleRepository } from "./vehicles/vehicle-repository.js";
 import { registerVehicleStateSubscriber } from "./vehicles/vehicle-state-subscriber.js";
+import { RealtimeGateway } from "./realtime/realtime-gateway.js";
 
-export function buildApp(deps: {
+// Single hardcoded fleet scope for M1 — multi-tenancy is out of scope
+// (RFC-002/ADR-003).
+const DEFAULT_FLEET_SCOPE = "fleet:default";
+
+export async function buildApp(deps: {
   db: Pool;
   eventBus: EventBus<DomainEvent>;
-}): FastifyInstance {
+}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? "info",
     },
   });
 
+  await app.register(fastifyWebsocket);
+
   const vehicleRepository = new PostgresVehicleRepository(deps.db);
-  registerVehicleStateSubscriber(deps.eventBus, vehicleRepository);
+  const realtimeGateway = new RealtimeGateway();
+  registerVehicleStateSubscriber(
+    deps.eventBus,
+    vehicleRepository,
+    realtimeGateway,
+    DEFAULT_FLEET_SCOPE,
+  );
+
+  app.get("/ws", { websocket: true }, (socket) => {
+    realtimeGateway.subscribe(DEFAULT_FLEET_SCOPE, socket);
+  });
 
   app.get("/health", async () => {
     await deps.db.query("SELECT 1");
