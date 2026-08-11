@@ -58,8 +58,14 @@ Postgres is reachable.
 | `npm run migrate --workspace=api -- up` | Apply Postgres migrations (`node-pg-migrate`) |
 | `npm run migrate --workspace=api -- down` | Roll back the last migration |
 
-CI (`.github/workflows/ci.yml`) runs lint, check-types, test, and build on
-every push and PR.
+`apps/api`'s test suite includes an integration test for `VehicleRepository`
+that hits a real Postgres — `npm run test` requires the DB from
+`docker compose up -d postgres` to be running and migrated (`npm run migrate
+--workspace=api -- up`), not just unit-testable in isolation. CI provisions
+its own Postgres service and runs migrations before `npm run test`.
+
+CI (`.github/workflows/ci.yml`) runs lint, check-types, migrate, test, and
+build on every push and PR.
 
 ## Tooling decisions
 

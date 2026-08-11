@@ -2,9 +2,12 @@ import "dotenv/config";
 import { buildApp } from "./app.js";
 import { createDbPool } from "./db.js";
 import { env } from "./env.js";
+import { InMemoryEventBus } from "./event-bus/in-memory-event-bus.js";
+import type { DomainEvent } from "./event-bus/domain-events.js";
 
 const db = createDbPool();
-const app = buildApp({ db });
+const eventBus = new InMemoryEventBus<DomainEvent>();
+const app = buildApp({ db, eventBus });
 
 app
   .listen({ port: env.port, host: "0.0.0.0" })
