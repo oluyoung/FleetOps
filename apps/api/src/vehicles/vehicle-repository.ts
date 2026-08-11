@@ -1,6 +1,34 @@
 import crypto from "node:crypto";
 import type { Pool } from "pg";
-import type { CanonicalTelemetryEvent } from "@repo/contracts";
+import type { CanonicalTelemetryEvent, VehicleSnapshot } from "@repo/contracts";
+
+interface VehicleRow {
+  id: string;
+  latitude: number | null;
+  longitude: number | null;
+  altitude_meters: number | null;
+  speed_mps: number | null;
+  heading_degrees: number | null;
+  battery_percent: number | null;
+  connectivity: VehicleSnapshot["connectivity"];
+  last_seen_source: VehicleSnapshot["lastSeenSource"];
+  last_updated_at: Date;
+}
+
+function toSnapshot(row: VehicleRow): VehicleSnapshot {
+  return {
+    id: row.id,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    altitudeMeters: row.altitude_meters,
+    speedMps: row.speed_mps,
+    headingDegrees: row.heading_degrees,
+    batteryPercent: row.battery_percent,
+    connectivity: row.connectivity,
+    lastSeenSource: row.last_seen_source,
+    lastUpdatedAt: row.last_updated_at.toISOString(),
+  };
+}
 
 /**
  * Per ADR-004: current vehicle state lives in `vehicles`; only meaningful
@@ -9,6 +37,8 @@ import type { CanonicalTelemetryEvent } from "@repo/contracts";
  */
 export interface VehicleRepository {
   upsertFromTelemetry(event: CanonicalTelemetryEvent): Promise<void>;
+  findAll(): Promise<VehicleSnapshot[]>;
+  findById(id: string): Promise<VehicleSnapshot | null>;
 }
 
 export class PostgresVehicleRepository implements VehicleRepository {
@@ -82,5 +112,29 @@ export class PostgresVehicleRepository implements VehicleRepository {
         JSON.stringify(telemetry),
       ],
     );
+  }
+
+  async findAll(): Promise<VehicleSnapshot[]> {
+    const result = await this.db.query<VehicleRow>(
+      `SELECT id, latitude, longitude, altitude_meters, speed_mps,
+              heading_degrees, battery_percent, connectivity,
+              last_seen_source, last_updated_at
+       FROM vehicles
+       ORDER BY id`,
+    );
+    return result.rows.map(toSnapshot);
+  }
+
+  async findById(id: string): Promise<VehicleSnapshot | null> {
+    const result = await this.db.query<VehicleRow>(
+      `SELECT id, latitude, longitude, altitude_meters, speed_mps,
+              heading_degrees, battery_percent, connectivity,
+              last_seen_source, last_updated_at
+       FROM vehicles
+       WHERE id = $1`,
+      [id],
+    );
+    const row = result.rows[0];
+    return row ? toSnapshot(row) : null;
   }
 }

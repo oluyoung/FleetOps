@@ -23,6 +23,24 @@ export function buildApp(deps: {
     return { status: "ok" };
   });
 
+  app.get("/vehicles", async () => {
+    return vehicleRepository.findAll();
+  });
+
+  app.get<{ Params: { id: string } }>(
+    "/vehicles/:id",
+    async (request, reply) => {
+      const vehicle = await vehicleRepository.findById(request.params.id);
+      if (!vehicle) {
+        return reply.status(404).send({
+          error: "NotFound",
+          message: `vehicle ${request.params.id} not found`,
+        });
+      }
+      return vehicle;
+    },
+  );
+
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     app.log.error({ err: error }, "unhandled request error");
     reply.status(error.statusCode ?? 500).send({

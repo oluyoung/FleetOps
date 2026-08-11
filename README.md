@@ -32,7 +32,10 @@ npm run dev             # web (3000), docs (3001), api (4000), telemetry-publish
 ```
 
 `GET http://localhost:4000/health` should return `{"status":"ok"}` once
-Postgres is reachable.
+Postgres is reachable. `GET /vehicles` and `GET /vehicles/:id` return the
+current vehicle snapshot(s) from Postgres (404 for an unknown id) — no
+telemetry has been ingested into the DB yet (Step 8), so both return an
+empty/404 result until the OpenSky ingestion loop is wired up.
 
 ## Workspace layout
 
