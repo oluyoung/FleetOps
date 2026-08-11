@@ -1,159 +1,73 @@
-# Turborepo starter
+# FleetOps Console
 
-This Turborepo starter is maintained by the Turborepo core team.
+Realtime fleet ops dashboard. Ingests vehicle position (OpenSky), weather
+enrichment (Open-Meteo), and simulated vehicle-health telemetry (MQTT) into a
+canonical event model, and serves it to a Next.js dashboard via REST
+snapshots + WebSocket deltas.
 
-## Using this example
+This README is the interim "how to run this" reference. It'll be replaced by
+a full operational runbook once the system is built end to end (see
+`notes/domain-model.md` for why that doc is deferred).
 
-Run the following command:
+Architecture decisions live in `docs/` (RFC-001/002, ADR-003 through ADR-012,
+PRD). Domain model and flow diagrams live in `notes/`. Milestone-by-milestone
+build order is in `../IMPLEMENTATION_PLAN.md`.
 
-```sh
-npx create-turbo@latest
-```
+## Architecture at a glance
 
-## What's inside?
+![Telemetry ingestion](notes/diagrams/telemetry-ingestion.png)
 
-This Turborepo includes the following packages/apps:
+More flows: [`notes/diagrams/reconnect-recovery.png`](notes/diagrams/reconnect-recovery.png),
+[`notes/diagrams/mqtt-ingestion.png`](notes/diagrams/mqtt-ingestion.png).
+Entity model and open questions: [`notes/domain-model.md`](notes/domain-model.md).
 
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+## Run it locally
 
 ```sh
-cd my-turborepo
-turbo build
+cp .env.example .env
+docker compose up -d   # Postgres + Mosquitto
+npm install
+npm run migrate --workspace=api -- up
+npm run dev             # web (3000), docs (3001), api (4000), telemetry-publisher
 ```
 
-Without global `turbo`, use your package manager:
+`GET http://localhost:4000/health` should return `{"status":"ok"}` once
+Postgres is reachable.
 
-```sh
-cd my-turborepo
-npx turbo build
-npm dlx turbo build
-npm exec turbo build
-```
+## Workspace layout
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+- `apps/web` — Next.js fleet dashboard
+- `apps/api` — Fastify backend: adapters, in-process event bus, Postgres
+  persistence, REST + WebSocket delivery
+- `apps/telemetry-publisher` — synthetic MQTT vehicle-health simulator
+  (stands in for a real IoT fleet; see `../mqtt publisher.md`)
+- `packages/contracts` — shared Zod schemas (`CanonicalTelemetryEvent`,
+  realtime event envelope) used by both `api` and `web`
+- `packages/ui`, `packages/eslint-config`, `packages/typescript-config` —
+  shared workspace tooling
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+## Common commands
 
-```sh
-turbo build --filter=docs
-```
+| Command | What it does |
+|---|---|
+| `npm run dev` | Run all apps in watch mode via Turborepo |
+| `npm run build` | Build all apps/packages |
+| `npm run lint` | Lint all workspaces |
+| `npm run check-types` | Typecheck all workspaces |
+| `npm run test` | Run Vitest across `apps/api` and `packages/contracts` |
+| `npm run migrate --workspace=api -- up` | Apply Postgres migrations (`node-pg-migrate`) |
+| `npm run migrate --workspace=api -- down` | Roll back the last migration |
 
-Without global `turbo`:
+CI (`.github/workflows/ci.yml`) runs lint, check-types, test, and build on
+every push and PR.
 
-```sh
-npx turbo build --filter=docs
-npm exec turbo build --filter=docs
-npm exec turbo build --filter=docs
-```
+## Tooling decisions
 
-### Develop
-
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-npm exec turbo dev
-npm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-npm exec turbo dev --filter=web
-npm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-npm exec turbo login
-npm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-npm exec turbo link
-npm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+- **Migrations**: `node-pg-migrate` — plain SQL migration files, matching
+  ADR-004's lean away from ORM complexity for the MVP.
+- **Validation**: `Zod`, shared between `apps/api` and `apps/web` via
+  `packages/contracts`.
+- **Tests**: `Vitest`.
+- **MQTT source**: no usable public vehicle-health feed exists, so
+  `apps/telemetry-publisher` simulates one and publishes to a local
+  Mosquitto broker (see `docker-compose.yml`).
