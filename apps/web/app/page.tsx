@@ -26,6 +26,8 @@ function VehicleRow({ vehicle }: { vehicle: VehicleSnapshot }) {
       <td>{formatNumber(vehicle.speedMps, "m/s")}</td>
       <td>{formatNumber(vehicle.headingDegrees, "°")}</td>
       <td>{vehicle.connectivity ?? "unknown"}</td>
+      <td>{formatNumber(vehicle.ambientTemperatureC, "°C")}</td>
+      <td>{formatNumber(vehicle.windSpeedMps, "m/s")}</td>
       <td>{formatLastSeen(vehicle.lastUpdatedAt)}</td>
     </tr>
   );
@@ -55,13 +57,15 @@ export default function Home() {
               <th>Speed</th>
               <th>Heading</th>
               <th>Connectivity</th>
+              <th>Temp</th>
+              <th>Wind</th>
               <th>Last telemetry</th>
             </tr>
           </thead>
           <tbody>
             {vehicles.length === 0 ? (
               <tr>
-                <td colSpan={6}>No vehicles yet.</td>
+                <td colSpan={8}>No vehicles yet.</td>
               </tr>
             ) : (
               vehicles.map((vehicle) => (

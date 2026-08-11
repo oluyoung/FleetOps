@@ -4,7 +4,10 @@ import fastifyWebsocket from "@fastify/websocket";
 import type { Pool } from "pg";
 import type { EventBus } from "./event-bus/event-bus.js";
 import type { DomainEvent } from "./event-bus/domain-events.js";
-import { PostgresVehicleRepository } from "./vehicles/vehicle-repository.js";
+import {
+  PostgresVehicleRepository,
+  type VehicleRepository,
+} from "./vehicles/vehicle-repository.js";
 import { registerVehicleStateSubscriber } from "./vehicles/vehicle-state-subscriber.js";
 import { RealtimeGateway } from "./realtime/realtime-gateway.js";
 
@@ -15,7 +18,7 @@ const DEFAULT_FLEET_SCOPE = "fleet:default";
 export async function buildApp(deps: {
   db: Pool;
   eventBus: EventBus<DomainEvent>;
-}): Promise<FastifyInstance> {
+}): Promise<{ app: FastifyInstance; vehicleRepository: VehicleRepository }> {
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? "info",
@@ -71,5 +74,5 @@ export async function buildApp(deps: {
     });
   });
 
-  return app;
+  return { app, vehicleRepository };
 }

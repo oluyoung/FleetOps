@@ -16,5 +16,8 @@ export const VehicleSnapshotSchema = z.object({
   connectivity: z.enum(["good", "degraded", "offline"]).nullable(),
   lastSeenSource: TelemetrySourceSchema.nullable(),
   lastUpdatedAt: z.string().datetime(),
+  ambientTemperatureC: z.number().nullable(),
+  windSpeedMps: z.number().min(0).nullable(),
+  weatherUpdatedAt: z.string().datetime().nullable(),
 });
 export type VehicleSnapshot = z.infer<typeof VehicleSnapshotSchema>;

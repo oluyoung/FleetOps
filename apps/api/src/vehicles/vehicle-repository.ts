@@ -13,6 +13,9 @@ interface VehicleRow {
   connectivity: VehicleSnapshot["connectivity"];
   last_seen_source: VehicleSnapshot["lastSeenSource"];
   last_updated_at: Date;
+  ambient_temperature_c: number | null;
+  wind_speed_mps: number | null;
+  weather_updated_at: Date | null;
 }
 
 function toSnapshot(row: VehicleRow): VehicleSnapshot {
@@ -27,6 +30,11 @@ function toSnapshot(row: VehicleRow): VehicleSnapshot {
     connectivity: row.connectivity,
     lastSeenSource: row.last_seen_source,
     lastUpdatedAt: row.last_updated_at.toISOString(),
+    ambientTemperatureC: row.ambient_temperature_c,
+    windSpeedMps: row.wind_speed_mps,
+    weatherUpdatedAt: row.weather_updated_at
+      ? row.weather_updated_at.toISOString()
+      : null,
   };
 }
 
@@ -37,6 +45,9 @@ function toSnapshot(row: VehicleRow): VehicleSnapshot {
  */
 export interface VehicleRepository {
   upsertFromTelemetry(
+    event: CanonicalTelemetryEvent,
+  ): Promise<VehicleSnapshot | null>;
+  applyEnrichment(
     event: CanonicalTelemetryEvent,
   ): Promise<VehicleSnapshot | null>;
   findAll(): Promise<VehicleSnapshot[]>;
@@ -121,11 +132,46 @@ export class PostgresVehicleRepository implements VehicleRepository {
     return toSnapshot(row);
   }
 
+  // Enrichment (Open-Meteo) is persisted separately from primary telemetry:
+  // only the weather columns are written, gated on their own
+  // weather_updated_at column rather than the shared last_updated_at, so
+  // Open-Meteo's coarser (hourly) timestamps never lose a staleness race
+  // against fresher position telemetry, and never null out position/speed/
+  // heading. No-ops if the vehicle doesn't exist yet — enrichment attaches
+  // to a vehicle established by primary telemetry, never creates one.
+  async applyEnrichment(
+    event: CanonicalTelemetryEvent,
+  ): Promise<VehicleSnapshot | null> {
+    const { telemetry } = event;
+
+    const result = await this.db.query<VehicleRow>(
+      `
+      UPDATE vehicles SET
+        ambient_temperature_c = $2,
+        wind_speed_mps = $3,
+        weather_updated_at = $4
+      WHERE id = $1
+        AND (weather_updated_at IS NULL OR weather_updated_at < $4)
+      RETURNING *
+      `,
+      [
+        event.vehicleId,
+        telemetry.ambientTemperatureC ?? null,
+        telemetry.windSpeedMps ?? null,
+        event.occurredAt,
+      ],
+    );
+
+    if (result.rowCount === 0) return null;
+    return toSnapshot(result.rows[0]!);
+  }
+
   async findAll(): Promise<VehicleSnapshot[]> {
     const result = await this.db.query<VehicleRow>(
       `SELECT id, latitude, longitude, altitude_meters, speed_mps,
               heading_degrees, battery_percent, connectivity,
-              last_seen_source, last_updated_at
+              last_seen_source, last_updated_at, ambient_temperature_c,
+              wind_speed_mps, weather_updated_at
        FROM vehicles
        ORDER BY id`,
     );
@@ -136,7 +182,8 @@ export class PostgresVehicleRepository implements VehicleRepository {
     const result = await this.db.query<VehicleRow>(
       `SELECT id, latitude, longitude, altitude_meters, speed_mps,
               heading_degrees, battery_percent, connectivity,
-              last_seen_source, last_updated_at
+              last_seen_source, last_updated_at, ambient_temperature_c,
+              wind_speed_mps, weather_updated_at
        FROM vehicles
        WHERE id = $1`,
       [id],

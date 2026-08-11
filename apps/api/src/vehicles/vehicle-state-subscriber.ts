@@ -10,7 +10,14 @@ export function registerVehicleStateSubscriber(
   scope: string,
 ): void {
   bus.subscribe("telemetry.received", async (event) => {
-    const snapshot = await repository.upsertFromTelemetry(event.event);
+    // Enrichment (Open-Meteo) never establishes vehicle identity and must
+    // not clobber primary telemetry columns, so it goes through a separate
+    // partial-update path rather than the full-overwrite upsert (RFC-001:
+    // "Weather is enrichment and must not block primary telemetry").
+    const snapshot =
+      event.event.source === "open-meteo"
+        ? await repository.applyEnrichment(event.event)
+        : await repository.upsertFromTelemetry(event.event);
     if (!snapshot) return; // stale event: no state change to broadcast
 
     realtimeGateway.broadcast(scope, {

@@ -95,4 +95,88 @@ describe("PostgresVehicleRepository", () => {
     );
     expect(vehicles.rows[0].latitude).toBe(52.0);
   });
+
+  describe("applyEnrichment", () => {
+    function weatherEvent(
+      overrides: Partial<CanonicalTelemetryEvent> = {},
+    ): CanonicalTelemetryEvent {
+      return event({
+        source: "open-meteo",
+        telemetry: { ambientTemperatureC: 18, windSpeedMps: 4 },
+        ...overrides,
+      });
+    }
+
+    it("no-ops when the vehicle doesn't exist yet", async () => {
+      const snapshot = await repository.applyEnrichment(weatherEvent());
+      expect(snapshot).toBeNull();
+
+      const vehicles = await db.query("SELECT * FROM vehicles WHERE id = $1", [
+        "opensky-test-vehicle",
+      ]);
+      expect(vehicles.rowCount).toBe(0);
+    });
+
+    it("sets weather fields without touching position/speed/heading", async () => {
+      await repository.upsertFromTelemetry(event());
+
+      const snapshot = await repository.applyEnrichment(weatherEvent());
+
+      expect(snapshot?.ambientTemperatureC).toBe(18);
+      expect(snapshot?.windSpeedMps).toBe(4);
+      expect(snapshot?.latitude).toBe(51.5);
+      expect(snapshot?.speedMps).toBe(10);
+    });
+
+    it("does not insert a vehicle_events row", async () => {
+      await repository.upsertFromTelemetry(event());
+      await repository.applyEnrichment(weatherEvent());
+
+      const events = await db.query(
+        "SELECT * FROM vehicle_events WHERE vehicle_id = $1",
+        ["opensky-test-vehicle"],
+      );
+      expect(events.rowCount).toBe(1); // only the first-seen row from OpenSky
+    });
+
+    it("is not rejected as stale by a fresher primary-telemetry occurredAt", async () => {
+      await repository.upsertFromTelemetry(
+        event({ occurredAt: new Date("2026-01-01T12:00:00.000Z").toISOString() }),
+      );
+
+      // Weather's observation time is far earlier than the vehicle's latest
+      // primary telemetry — it must still apply, since weather staleness is
+      // gated on its own weather_updated_at column, not last_updated_at.
+      const snapshot = await repository.applyEnrichment(
+        weatherEvent({
+          occurredAt: new Date("2026-01-01T00:00:00.000Z").toISOString(),
+        }),
+      );
+
+      expect(snapshot?.ambientTemperatureC).toBe(18);
+    });
+
+    it("ignores a stale enrichment older than the stored weather", async () => {
+      await repository.upsertFromTelemetry(event());
+      await repository.applyEnrichment(
+        weatherEvent({
+          occurredAt: new Date("2026-01-01T06:00:00.000Z").toISOString(),
+          telemetry: { ambientTemperatureC: 25, windSpeedMps: 2 },
+        }),
+      );
+
+      const stale = await repository.applyEnrichment(
+        weatherEvent({
+          occurredAt: new Date("2026-01-01T00:00:00.000Z").toISOString(),
+          telemetry: { ambientTemperatureC: 5, windSpeedMps: 1 },
+        }),
+      );
+
+      expect(stale).toBeNull();
+      const vehicles = await db.query("SELECT * FROM vehicles WHERE id = $1", [
+        "opensky-test-vehicle",
+      ]);
+      expect(vehicles.rows[0].ambient_temperature_c).toBe(25);
+    });
+  });
 });

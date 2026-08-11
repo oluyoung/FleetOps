@@ -61,9 +61,43 @@ backoff (capped, resetting after the next success) rather than crashing the
 process or hammering OpenSky (RFC-001 "transient provider failures use
 bounded retry/backoff").
 
+To poll authenticated (https://openskynetwork.github.io/opensky-api/rest.html#authentication),
+create an API client on your OpenSky account (https://opensky-network.org/my-opensky/account)
+and put its `clientId`/`clientSecret` in `apps/web/credentials.json`:
+
+```json
+{ "clientId": "...", "clientSecret": "..." }
+```
+
+`OpenSkyAdapter` exchanges these for a bearer token (cached, refreshed ~30s
+before its ~30min expiry) via OpenSky's OAuth2 client-credentials endpoint,
+and re-authenticates once on a `401` before failing a poll. This file is
+gitignored — it's never committed. `OPENSKY_CLIENT_ID`/`OPENSKY_CLIENT_SECRET`
+env vars are a fallback if the file isn't present. Without either, the
+adapter polls the anonymous `/states/all` endpoint, which rate-limits
+aggressively (frequent `429`s) and can leave `/vehicles` empty for long
+stretches; `apps/api` logs a warning on startup when no credentials are found.
+
+Alongside OpenSky, `apps/api` also runs a `WeatherAdapter` on its own
+`OPEN_METEO_POLL_INTERVAL_MS` timer (default 10min — Open-Meteo's forecast
+data updates hourly, so there's no point polling at OpenSky's cadence). It
+reads current vehicle positions from `VehicleRepository`, batches them into
+one request to Open-Meteo's forecast API (grouping vehicles that round to
+the same ~1km location), and publishes an `open-meteo`-sourced canonical
+event per vehicle with `ambientTemperatureC`/`windSpeedMps`. This is
+enrichment, not primary telemetry (RFC-001): it's persisted through a
+separate `VehicleRepository.applyEnrichment` path gated on its own
+`weather_updated_at` column, so it can never overwrite position/speed/
+heading or lose a staleness race against OpenSky's much fresher timestamps,
+and it no-ops silently if a vehicle hasn't been established by OpenSky yet.
+Because it runs on its own independent ingestion loop with its own
+try/catch + backoff, an Open-Meteo outage or slow response can never block
+or delay OpenSky ingestion.
+
 `apps/web` (`http://localhost:3000`) is the fleet dashboard: a table of
-vehicles (id, position, speed, heading, connectivity, last telemetry time)
-fetched from `GET /vehicles` on load via TanStack Query, kept live by a
+vehicles (id, position, speed, heading, connectivity, ambient temperature,
+wind speed, last telemetry time) fetched from `GET /vehicles` on load via
+TanStack Query, kept live by a
 `GET /ws` subscription that applies `vehicle.updated` deltas onto the same
 client-side cache — one cache, not REST and WebSocket state living
 separately (RFC-002). The connection badge in the header reflects the socket
@@ -118,6 +152,10 @@ for the checkpoint: what was verified, findings (including an `.env`-loading
 bug fixed as part of the checkpoint), and confirmation that the
 adapter/event-bus/repository boundaries held up before Milestone 2
 generalises them to Open-Meteo and MQTT.
+
+Milestone 2 is underway: the Open-Meteo `WeatherAdapter` (`IMPLEMENTATION_PLAN.md`
+Step 11) is wired in and verified end to end against live Postgres/Open-Meteo
+— see the Open-Meteo section above. MQTT (Step 12) is next.
 
 ## Tooling decisions
 

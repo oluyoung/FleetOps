@@ -14,4 +14,11 @@ export const env = {
     process.env.TELEMETRY_PUSH_INTERVAL_MS ?? 500,
   ),
   openSkyPollIntervalMs: Number(process.env.OPENSKY_POLL_INTERVAL_MS ?? 15000),
+  openSkyClientId: process.env.OPENSKY_CLIENT_ID,
+  openSkyClientSecret: process.env.OPENSKY_CLIENT_SECRET,
+  // Open-Meteo forecast data updates hourly — polling at OpenSky's cadence
+  // would just repeat identical requests.
+  openMeteoPollIntervalMs: Number(
+    process.env.OPEN_METEO_POLL_INTERVAL_MS ?? 600000,
+  ),
 };

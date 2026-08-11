@@ -10,7 +10,7 @@
     "lint": "eslint . --max-warnings 0",
     "check-types": "tsc --noEmit",
     "test": "vitest run",
-    "migrate": "node-pg-migrate"
+    "migrate": "DOTENV_CONFIG_PATH=../../.env node -r dotenv/config ../../node_modules/node-pg-migrate/bin/node-pg-migrate.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",

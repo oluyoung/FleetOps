@@ -2,6 +2,7 @@ import type { FastifyBaseLogger } from "fastify";
 import type { ProviderAdapter } from "../adapters/provider-adapter.js";
 import type { EventBus } from "../event-bus/event-bus.js";
 import type { DomainEvent } from "../event-bus/domain-events.js";
+import { recordProviderError } from "../observability/provider-errors.js";
 
 export interface IngestionLoopOptions {
   adapter: ProviderAdapter;
@@ -45,6 +46,7 @@ export function startIngestionLoop(options: IngestionLoopOptions): IngestionLoop
       scheduleNext(pollIntervalMs);
     } catch (err) {
       consecutiveFailures += 1;
+      recordProviderError(adapter.source);
       log.error(
         { err, source: adapter.source, consecutiveFailures },
         "provider poll failed",

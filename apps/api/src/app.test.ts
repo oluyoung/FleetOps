@@ -13,7 +13,7 @@ function fakePool(rows: unknown[] = []): Pool {
 
 describe("GET /health", () => {
   it("returns ok when the database responds", async () => {
-    const app = await buildApp({
+    const { app } = await buildApp({
       db: fakePool(),
       eventBus: new InMemoryEventBus<DomainEvent>(),
     });
@@ -36,8 +36,11 @@ describe("GET /vehicles", () => {
       connectivity: null,
       last_seen_source: "opensky",
       last_updated_at: new Date("2026-01-01T00:00:00.000Z"),
+      ambient_temperature_c: null,
+      wind_speed_mps: null,
+      weather_updated_at: null,
     };
-    const app = await buildApp({
+    const { app } = await buildApp({
       db: fakePool([row]),
       eventBus: new InMemoryEventBus<DomainEvent>(),
     });
@@ -55,6 +58,9 @@ describe("GET /vehicles", () => {
         connectivity: null,
         lastSeenSource: "opensky",
         lastUpdatedAt: "2026-01-01T00:00:00.000Z",
+        ambientTemperatureC: null,
+        windSpeedMps: null,
+        weatherUpdatedAt: null,
       },
     ]);
   });
@@ -62,7 +68,7 @@ describe("GET /vehicles", () => {
 
 describe("GET /vehicles/:id", () => {
   it("returns 404 when the vehicle does not exist", async () => {
-    const app = await buildApp({
+    const { app } = await buildApp({
       db: fakePool([]),
       eventBus: new InMemoryEventBus<DomainEvent>(),
     });
@@ -97,7 +103,7 @@ describe("GET /ws", () => {
       inserted: true,
     };
     const eventBus = new InMemoryEventBus<DomainEvent>();
-    const app = await buildApp({ db: fakePool([row]), eventBus });
+    const { app } = await buildApp({ db: fakePool([row]), eventBus });
     const address = await app.listen({ port: 0, host: "127.0.0.1" });
     closeServer = () => app.close();
 

@@ -1,5 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
-import { mapStateVectorToEvent, OpenSkyAdapter } from "./opensky.js";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  loadOpenSkyCredentials,
+  mapStateVectorToEvent,
+  OpenSkyAdapter,
+} from "./opensky.js";
 
 // Real OpenSky state vector shape:
 // [icao24, callsign, origin_country, time_position, last_contact,
@@ -173,5 +180,158 @@ describe("OpenSkyAdapter.poll", () => {
     // "aaa" is still the pinned fleet, so it's just absent this poll —
     // "zzz" never gets reported even though it's in the raw feed.
     expect(second.map((e) => e.vehicleId).sort()).toEqual(["opensky-bbb"]);
+  });
+
+  it("fetches and attaches a bearer token when credentials are provided", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({ access_token: "tok-1", expires_in: 3600 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({ time: 1_700_000_000, states: [stateVector()] }),
+      }) as unknown as typeof fetch;
+
+    const adapter = new OpenSkyAdapter(fetchFn, undefined, undefined, {
+      clientId: "id",
+      clientSecret: "secret",
+    });
+
+    await adapter.poll();
+
+    const statesCall = (fetchFn as ReturnType<typeof vi.fn>).mock.calls.at(1);
+    expect(statesCall?.[1]).toMatchObject({
+      headers: { Authorization: "Bearer tok-1" },
+    });
+  });
+
+  it("reuses a cached token across polls instead of re-authenticating", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({ access_token: "tok-1", expires_in: 3600 }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({ time: 1_700_000_000, states: [] }),
+      }) as unknown as typeof fetch;
+
+    const adapter = new OpenSkyAdapter(fetchFn, undefined, undefined, {
+      clientId: "id",
+      clientSecret: "secret",
+    });
+
+    await adapter.poll();
+    await adapter.poll();
+
+    const tokenCalls = (fetchFn as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([url]) => url === "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token",
+    );
+    expect(tokenCalls).toHaveLength(1);
+  });
+
+  it("propagates a token request failure without crashing", async () => {
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      json: async () => ({}),
+    }) as unknown as typeof fetch;
+
+    const adapter = new OpenSkyAdapter(fetchFn, undefined, undefined, {
+      clientId: "id",
+      clientSecret: "wrong",
+    });
+
+    await expect(adapter.poll()).rejects.toThrow("OpenSky token request failed");
+  });
+
+  it("re-authenticates once and retries after a 401, without failing the poll", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({ access_token: "tok-1", expires_in: 3600 }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        json: async () => ({}),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({ access_token: "tok-2", expires_in: 3600 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: async () => ({ time: 1_700_000_000, states: [stateVector()] }),
+      }) as unknown as typeof fetch;
+
+    const adapter = new OpenSkyAdapter(fetchFn, undefined, undefined, {
+      clientId: "id",
+      clientSecret: "secret",
+    });
+
+    const events = await adapter.poll();
+
+    expect(events).toHaveLength(1);
+    expect(fetchFn).toHaveBeenCalledTimes(4);
+    const finalCall = (fetchFn as ReturnType<typeof vi.fn>).mock.calls.at(3);
+    expect(finalCall?.[1]).toMatchObject({
+      headers: { Authorization: "Bearer tok-2" },
+    });
+  });
+});
+
+describe("loadOpenSkyCredentials", () => {
+  let dir: string | undefined;
+
+  afterEach(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+    dir = undefined;
+  });
+
+  it("returns undefined when the credentials file does not exist", () => {
+    expect(loadOpenSkyCredentials("/nonexistent/credentials.json")).toBeUndefined();
+  });
+
+  it("parses clientId/clientSecret from a valid credentials file", () => {
+    dir = mkdtempSync(join(tmpdir(), "opensky-creds-"));
+    const path = join(dir, "credentials.json");
+    writeFileSync(
+      path,
+      JSON.stringify({ clientId: "abc", clientSecret: "xyz" }),
+    );
+
+    expect(loadOpenSkyCredentials(path)).toEqual({
+      clientId: "abc",
+      clientSecret: "xyz",
+    });
+  });
+
+  it("throws on a malformed credentials file", () => {
+    dir = mkdtempSync(join(tmpdir(), "opensky-creds-"));
+    const path = join(dir, "credentials.json");
+    writeFileSync(path, JSON.stringify({ clientId: "abc" }));
+
+    expect(() => loadOpenSkyCredentials(path)).toThrow();
   });
 });
