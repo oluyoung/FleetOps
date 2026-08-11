@@ -34,6 +34,29 @@
   color: #b3261e;
 }
 
+.providerHealth {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.providerBadge {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
+.providerBadge[data-status="HEALTHY"] {
+  color: #0a7a2f;
+}
+
+.providerBadge[data-status="DEGRADED"] {
+  color: #b3261e;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;

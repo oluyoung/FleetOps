@@ -49,6 +49,27 @@ describe("GET /metrics", () => {
   });
 });
 
+describe("GET /providers/health", () => {
+  it("returns a health entry for every known provider", async () => {
+    const { app } = await buildApp({
+      db: fakePool(),
+      eventBus: new InMemoryEventBus<DomainEvent>(),
+      providerPollIntervalsMs: { opensky: 15000, "open-meteo": 600000, mqtt: 1000 },
+    });
+    const response = await app.inject({ method: "GET", url: "/providers/health" });
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { providers: { provider: string; status: string }[] };
+    expect(body.providers.map((p) => p.provider).sort()).toEqual([
+      "mqtt",
+      "open-meteo",
+      "opensky",
+    ]);
+    for (const provider of body.providers) {
+      expect(["HEALTHY", "DEGRADED"]).toContain(provider.status);
+    }
+  });
+});
+
 describe("GET /vehicles", () => {
   it("returns the current vehicle snapshots", async () => {
     const row = {

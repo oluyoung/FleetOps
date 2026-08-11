@@ -42,13 +42,24 @@ have this problem: it loads `.env` from the repo root explicitly via
 `GET http://localhost:4000/health` should return `{"status":"ok"}` once
 Postgres is reachable. `GET /vehicles` and `GET /vehicles/:id` return the
 current vehicle snapshot(s) from Postgres (404 for an unknown id), populated
-by the OpenSky ingestion loop described below.
+by the OpenSky ingestion loop described below. `GET /providers/health`
+returns a `HEALTHY`/`DEGRADED` status per provider, derived from the
+`/metrics` counters (Step 18, details below) — `apps/web`'s dashboard polls
+this to render the badge strip above the fleet table.
 
 `GET /ws` upgrades to a WebSocket connection subscribed to the single
 hardcoded `fleet:default` scope (multi-tenancy is out of scope for M1). Every
 canonical telemetry event that changes vehicle state is broadcast as a
-`vehicle.updated` `RealtimeEvent<VehicleSnapshot>` envelope — no aggregation
-yet (that's Milestone 3 / ADR-010).
+`vehicle.updated` `RealtimeEvent<VehicleSnapshot>` envelope. Per ADR-010
+(Step 17), `vehicle.updated` is replaceable telemetry: updates for the same
+vehicle arriving within one `TELEMETRY_PUSH_INTERVAL_MS` window (default
+500ms) are coalesced in `RealtimeGateway`, and only the latest is delivered
+on the next flush tick. Critical domain event types (`vehicle.offline`,
+`vehicle.faulted` — not yet emitted anywhere; provider health, added in
+Step 18, is a separate REST-polled concern rather than a domain event)
+bypass aggregation and deliver immediately. Each
+connection also has a bounded, drop-oldest delivery queue so one slow client
+can't back up delivery to the rest.
 
 CORS is open to `WEB_ORIGIN` (default `http://localhost:3000`) so `apps/web`
 can call the REST endpoints directly from the browser.
@@ -193,7 +204,7 @@ connectivity/battery fields) doesn't stop OpenSky ingestion or REST/WebSocket
 delivery, and that the three ingestion loops/adapters recover independently.
 See [`notes/milestone-2-review.md`](notes/milestone-2-review.md) for the full
 checkpoint: verification performed, findings, and gaps carried into Milestone
-3 (no provider-health surface yet — that's Step 18).
+3 (no provider-health surface yet — added in Step 18 below).
 
 Milestone 3 (observability + aggregation, ADR-012/ADR-010) is underway.
 Step 15 — structured logging — is done: `apps/api` now builds one Pino
@@ -221,16 +232,60 @@ before filtering) — `provider-errors.ts`'s ad-hoc in-memory counter, written
 ahead of this step, is gone now that `provider_errors_total` is the real
 thing. `websocket_connections_active`/`websocket_reconnect_total` and
 `realtime_updates_published_total`/`realtime_delivery_errors_total` are
-incremented from `RealtimeGateway`; `realtime_updates_coalesced_total` is
-registered but stays at zero until Step 17's aggregation boundary exists to
-increment it. Since the server can't distinguish a reconnect from a first
-connect on its own, `apps/web`'s `useFleet` now opens `GET /ws?reconnect=true`
-on every attempt after its first, and `apps/api` reads that query param.
-Verified against the live stack: `/metrics` shows real `opensky`/`open-meteo`/
-`mqtt` counts and non-zero `telemetry_ingestion_lag_ms` buckets while
-`turbo dev` is running, and `websocket_connections_active`/
-`realtime_updates_published_total` increment while a WebSocket client is
-connected.
+incremented from `RealtimeGateway`. Since the server can't distinguish a
+reconnect from a first connect on its own, `apps/web`'s `useFleet` now opens
+`GET /ws?reconnect=true` on every attempt after its first, and `apps/api`
+reads that query param. Verified against the live stack: `/metrics` shows
+real `opensky`/`open-meteo`/`mqtt` counts and non-zero
+`telemetry_ingestion_lag_ms` buckets while `turbo dev` is running, and
+`websocket_connections_active`/`realtime_updates_published_total` increment
+while a WebSocket client is connected.
+
+Step 17 — telemetry aggregation/backpressure — is done: per ADR-010,
+`RealtimeGateway` now buffers `vehicle.updated` (replaceable telemetry) per
+`(scope, entityId)` and flushes on a `setInterval` tick every
+`TELEMETRY_PUSH_INTERVAL_MS` (default 500ms, already in `.env`/`env.ts` from
+Step 8), delivering only the latest update per vehicle and incrementing
+`realtime_updates_coalesced_total` for every update a later one supersedes
+before flush. Any other `RealtimeEventType` (`vehicle.offline`,
+`vehicle.faulted` — critical domain events; none are emitted yet) skips
+buffering entirely and delivers on the same tick it's published. Each
+connection also gets its own bounded (50-entry), drop-oldest delivery queue
+fed at flush time — if a socket's `bufferedAmount` stays above 1MB (a
+backpressured/slow client), new flushes queue instead of piling onto the
+socket's own send buffer, and the oldest queued update is dropped (counted
+as coalesced) once the bound is hit, rather than growing unbounded. Sequence
+numbers are now assigned at actual delivery time (flush or immediate), not
+at `broadcast()` call time, since a coalesced update never gets its own
+sequence. `buildApp` takes an optional `telemetryPushIntervalMs` (defaulting
+to 500 for tests that don't care); `index.ts` passes
+`env.telemetryPushIntervalMs` explicitly, matching how every other interval
+in `apps/api` is threaded through rather than read from `env` deep inside a
+module. Verified via `RealtimeGateway`'s unit tests (coalescing collapses two
+rapid updates for the same vehicle into one delivery with the latest
+payload, a critical event type bypasses the flush entirely, and a
+permanently-backpressured connection's queue never exceeds its bound) and
+`app.test.ts`'s existing end-to-end WebSocket test, which still passes with
+the added flush-tick latency.
+
+Step 18 — provider health — is done: `GET /providers/health`
+(`apps/api/src/observability/provider-health.ts`) derives a `HEALTHY`/
+`DEGRADED` status per provider straight from the Step 16 metrics — no
+separate health state is tracked. A provider is `DEGRADED` if it has never
+recorded a successful poll, if its last success is older than 3x its own
+poll interval (floored at 30s, so a fast poller like MQTT's 1s buffer-drain
+doesn't flap on one slow tick), if its average `telemetry_ingestion_lag_ms`
+exceeds 30s, or if `provider_errors_total` is both `>= 3` and more than half
+of `errors + telemetry_events_received_total` (a persistent failure ratio,
+not one startup blip). `apps/web`'s dashboard polls this endpoint every 5s
+(`lib/use-provider-health.ts`) and renders a small `opensky`/`open-meteo`/
+`mqtt` badge strip above the fleet table, colored per status. This endpoint
+is a plain REST poll, not a `RealtimeEvent` — `vehicle.offline`/
+`vehicle.faulted` critical events (Step 17's aggregation bypass) are still
+unemitted; provider health and per-vehicle domain events remain separate
+concerns. Verified with `apps/api`'s `provider-health.test.ts` (never
+succeeded, stale, high lag, high error ratio, and the small-error-count
+tolerance all covered) and `app.test.ts`'s `GET /providers/health` test.
 
 ## Tooling decisions
 

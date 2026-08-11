@@ -1,7 +1,8 @@
 "use client";
 
-import type { VehicleSnapshot } from "@repo/contracts";
+import type { ProviderHealth, VehicleSnapshot } from "@repo/contracts";
 import { useFleet } from "../lib/use-fleet";
+import { useProviderHealth } from "../lib/use-provider-health";
 import styles from "./page.module.css";
 
 function formatCoordinate(value: number | null): string {
@@ -14,6 +15,14 @@ function formatNumber(value: number | null, unit: string): string {
 
 function formatLastSeen(iso: string): string {
   return new Date(iso).toLocaleTimeString();
+}
+
+function ProviderHealthBadge({ health }: { health: ProviderHealth }) {
+  return (
+    <span className={styles.providerBadge} data-status={health.status}>
+      {health.provider}
+    </span>
+  );
 }
 
 function VehicleRow({ vehicle }: { vehicle: VehicleSnapshot }) {
@@ -35,6 +44,7 @@ function VehicleRow({ vehicle }: { vehicle: VehicleSnapshot }) {
 
 export default function Home() {
   const { data: vehicles, isLoading, isError, connectionStatus } = useFleet();
+  const { data: providerHealth } = useProviderHealth();
 
   return (
     <main className={styles.page}>
@@ -44,6 +54,14 @@ export default function Home() {
           {connectionStatus === "open" ? "live" : connectionStatus}
         </span>
       </header>
+
+      {providerHealth && (
+        <div className={styles.providerHealth}>
+          {providerHealth.map((health) => (
+            <ProviderHealthBadge key={health.provider} health={health} />
+          ))}
+        </div>
+      )}
 
       {isLoading && <p>Loading fleet…</p>}
       {isError && <p>Failed to load fleet snapshot.</p>}

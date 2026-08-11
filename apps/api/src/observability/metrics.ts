@@ -63,9 +63,6 @@ export const realtimeUpdatesPublishedTotal = new Counter({
   registers: [metricsRegistry],
 });
 
-// Not yet incremented anywhere — no coalescing exists until the delivery
-// aggregation boundary lands (IMPLEMENTATION_PLAN.md Step 17 / ADR-010).
-// Registered now so /metrics carries the full ADR-012 metric set immediately.
 export const realtimeUpdatesCoalescedTotal = new Counter({
   name: "realtime_updates_coalesced_total",
   help: "Realtime updates coalesced into a later update instead of being delivered individually.",

@@ -13,7 +13,16 @@ import { PostgresVehicleIdentityResolver } from "./vehicles/vehicle-identity-res
 
 const db = createDbPool();
 const eventBus = new InMemoryEventBus<DomainEvent>();
-const { app, vehicleRepository } = await buildApp({ db, eventBus });
+const { app, vehicleRepository, realtimeGateway } = await buildApp({
+  db,
+  eventBus,
+  telemetryPushIntervalMs: env.telemetryPushIntervalMs,
+  providerPollIntervalsMs: {
+    opensky: env.openSkyPollIntervalMs,
+    "open-meteo": env.openMeteoPollIntervalMs,
+    mqtt: env.mqttPollIntervalMs,
+  },
+});
 
 // Per ADR-005/Step 13: OpenSky and MQTT both establish vehicle identity, so
 // both are wrapped to resolve their raw provider id into one FleetOps-owned
@@ -81,6 +90,7 @@ async function shutdown() {
   weatherIngestion.stop();
   mqttIngestion.stop();
   mqttAdapter.disconnect();
+  realtimeGateway.stop();
   await app.close();
   await db.end();
   process.exit(0);
