@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./load-env.js";
 import { buildApp } from "./app.js";
 import { createDbPool } from "./db.js";
 import { env } from "./env.js";

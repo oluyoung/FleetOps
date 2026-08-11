@@ -31,6 +31,14 @@ npm run migrate --workspace=api -- up
 npm run dev             # web (3000), docs (3001), api (4000), telemetry-publisher
 ```
 
+`node-pg-migrate` (invoked above via the workspace script) doesn't read the
+root `.env` on its own — `npm run --workspace` runs with cwd set to
+`apps/api`, not the repo root. Either export `DATABASE_URL` in your shell
+before running the migrate command, or run it via `turbo run migrate` once
+that task exists. `apps/api`'s own process (`npm run dev`/`start`) doesn't
+have this problem: it loads `.env` from the repo root explicitly via
+`apps/api/src/load-env.ts`, regardless of invoking cwd.
+
 `GET http://localhost:4000/health` should return `{"status":"ok"}` once
 Postgres is reachable. `GET /vehicles` and `GET /vehicles/:id` return the
 current vehicle snapshot(s) from Postgres (404 for an unknown id), populated
@@ -100,6 +108,16 @@ its own Postgres service and runs migrations before `npm run test`.
 
 CI (`.github/workflows/ci.yml`) runs lint, check-types, migrate, test, and
 build on every push and PR.
+
+## Milestone status
+
+Milestone 1 (single-provider OpenSky vertical slice — adapter → event bus →
+Postgres → REST → WebSocket → dashboard) is complete and manually verified
+end to end. See [`notes/milestone-1-review.md`](notes/milestone-1-review.md)
+for the checkpoint: what was verified, findings (including an `.env`-loading
+bug fixed as part of the checkpoint), and confirmation that the
+adapter/event-bus/repository boundaries held up before Milestone 2
+generalises them to Open-Meteo and MQTT.
 
 ## Tooling decisions
 
