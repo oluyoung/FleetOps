@@ -1,3 +1,5 @@
+import type { FastifyBaseLogger } from "fastify";
+import { logger } from "../logger.js";
 import type { EventBus } from "./event-bus.js";
 
 type Handler<TEvent> = (event: TEvent) => Promise<void> | void;
@@ -9,6 +11,8 @@ export class InMemoryEventBus<TEvent extends { type: string }>
     TEvent["type"],
     Array<Handler<TEvent>>
   >();
+
+  constructor(private readonly log: FastifyBaseLogger = logger) {}
 
   subscribe<TType extends TEvent["type"]>(
     type: TType,
@@ -28,9 +32,9 @@ export class InMemoryEventBus<TEvent extends { type: string }>
         try {
           await handler(event);
         } catch (error) {
-          console.error(
-            `event bus handler failed for event type "${event.type}"`,
-            error,
+          this.log.error(
+            { err: error, eventType: event.type },
+            "event bus handler failed",
           );
         }
       }),

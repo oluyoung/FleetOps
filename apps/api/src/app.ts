@@ -4,6 +4,7 @@ import fastifyWebsocket from "@fastify/websocket";
 import type { Pool } from "pg";
 import type { EventBus } from "./event-bus/event-bus.js";
 import type { DomainEvent } from "./event-bus/domain-events.js";
+import { logger } from "./logger.js";
 import {
   PostgresVehicleRepository,
   type VehicleRepository,
@@ -19,11 +20,7 @@ export async function buildApp(deps: {
   db: Pool;
   eventBus: EventBus<DomainEvent>;
 }): Promise<{ app: FastifyInstance; vehicleRepository: VehicleRepository }> {
-  const app = Fastify({
-    logger: {
-      level: process.env.LOG_LEVEL ?? "info",
-    },
-  });
+  const app = Fastify({ loggerInstance: logger });
 
   await app.register(fastifyCors, {
     origin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
@@ -31,12 +28,13 @@ export async function buildApp(deps: {
   await app.register(fastifyWebsocket);
 
   const vehicleRepository = new PostgresVehicleRepository(deps.db);
-  const realtimeGateway = new RealtimeGateway();
+  const realtimeGateway = new RealtimeGateway(app.log);
   registerVehicleStateSubscriber(
     deps.eventBus,
     vehicleRepository,
     realtimeGateway,
     DEFAULT_FLEET_SCOPE,
+    app.log,
   );
 
   app.get("/ws", { websocket: true }, (socket) => {
@@ -66,8 +64,8 @@ export async function buildApp(deps: {
     },
   );
 
-  app.setErrorHandler((error: FastifyError, _request, reply) => {
-    app.log.error({ err: error }, "unhandled request error");
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    request.log.error({ err: error }, "unhandled request error");
     reply.status(error.statusCode ?? 500).send({
       error: error.name,
       message: error.message,

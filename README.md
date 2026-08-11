@@ -182,11 +182,32 @@ bug fixed as part of the checkpoint), and confirmation that the
 adapter/event-bus/repository boundaries held up before Milestone 2
 generalises them to Open-Meteo and MQTT.
 
-Milestone 2 is underway: the Open-Meteo `WeatherAdapter` (`IMPLEMENTATION_PLAN.md`
-Step 11), the MQTT `MqttAdapter` (Step 12), and provider ID mapping via
-`VehicleIdentityResolver`/`IdentityResolvingAdapter` (Step 13) are all wired
-in and verified end to end against live Postgres/Open-Meteo/Mosquitto — see
-the sections above. The Milestone 2 checkpoint (Step 14) is next.
+Milestone 2 (multi-provider: OpenSky + Open-Meteo + MQTT) is complete. The
+Open-Meteo `WeatherAdapter` (`IMPLEMENTATION_PLAN.md` Step 11), the MQTT
+`MqttAdapter` (Step 12), and provider ID mapping via
+`VehicleIdentityResolver`/`IdentityResolvingAdapter` (Step 13) are wired in
+and verified end to end against live Postgres/Open-Meteo/Mosquitto — see the
+sections above. The Milestone 2 checkpoint (Step 14) confirmed, by killing
+and restarting the MQTT broker mid-run, that a degraded provider (stale
+connectivity/battery fields) doesn't stop OpenSky ingestion or REST/WebSocket
+delivery, and that the three ingestion loops/adapters recover independently.
+See [`notes/milestone-2-review.md`](notes/milestone-2-review.md) for the full
+checkpoint: verification performed, findings, and gaps carried into Milestone
+3 (no provider-health surface yet — that's Step 18).
+
+Milestone 3 (observability + aggregation, ADR-012/ADR-010) is underway.
+Step 15 — structured logging — is done: `apps/api` now builds one Pino
+instance (`src/logger.ts`) shared by Fastify (via `loggerInstance`, giving
+every HTTP/WS log line a `requestId`) and the non-request-scoped parts of the
+pipeline (`InMemoryEventBus`, `RealtimeGateway`, the vehicle-state
+subscriber). Per-telemetry-event logging (`provider`, `vehicleId`,
+`eventId`, `occurredAt`, `receivedAt`, `ingestionLagMs`) and per-WebSocket
+delivery logging (`connectionId`) run at `debug`, not `info`, so the default
+`LOG_LEVEL=info` stays quiet under normal ingestion volume — verified by
+running the stack at both levels and confirming `debug`-only lines appear
+only with `LOG_LEVEL=debug`. WebSocket connect/disconnect log at `info`
+(one line per connection, not per message) with a per-connection
+`connectionId`. Metrics via `GET /metrics` (Step 16) is next.
 
 ## Tooling decisions
 
@@ -197,6 +218,9 @@ the sections above. The Milestone 2 checkpoint (Step 14) is next.
 - **Client data**: `@tanstack/react-query` on `apps/web`, one cache fed by
   both the REST snapshot and WebSocket deltas.
 - **Tests**: `Vitest`.
+- **Logging**: `Pino` (ADR-012), one shared instance (`apps/api/src/logger.ts`)
+  passed to Fastify and injected into everything else that logs, rather than
+  each module creating its own or falling back to `console.*`.
 - **MQTT source**: no usable public vehicle-health feed exists, so
   `apps/telemetry-publisher` simulates one and publishes to a local
   Mosquitto broker (see `docker-compose.yml`).

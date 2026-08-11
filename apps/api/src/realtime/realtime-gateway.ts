@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import type { FastifyBaseLogger } from "fastify";
 import type { RealtimeEventType } from "@repo/contracts";
 import type { WebSocket } from "@fastify/websocket";
 
@@ -19,20 +21,28 @@ export type RealtimeEnvelope<T> = {
 export class RealtimeGateway {
   private readonly connectionsByScope = new Map<string, Set<WebSocket>>();
   private readonly sequenceByEntity = new Map<string, number>();
+  private readonly connectionIds = new WeakMap<WebSocket, string>();
+
+  constructor(private readonly log: FastifyBaseLogger) {}
 
   subscribe(scope: string, socket: WebSocket): void {
+    const connectionId = crypto.randomUUID();
+    this.connectionIds.set(socket, connectionId);
+
     let sockets = this.connectionsByScope.get(scope);
     if (!sockets) {
       sockets = new Set();
       this.connectionsByScope.set(scope, sockets);
     }
     sockets.add(socket);
+    this.log.info({ connectionId, scope }, "websocket connected");
 
     socket.on("close", () => {
       sockets!.delete(socket);
       if (sockets!.size === 0) {
         this.connectionsByScope.delete(scope);
       }
+      this.log.info({ connectionId, scope }, "websocket disconnected");
     });
   }
 
@@ -62,12 +72,23 @@ export class RealtimeGateway {
     const serialized = JSON.stringify(envelope);
 
     for (const socket of sockets) {
+      const connectionId = this.connectionIds.get(socket);
       // A slow/closed client must never break delivery to the rest.
       if (socket.readyState !== socket.OPEN) continue;
       try {
         socket.send(serialized);
-      } catch {
-        // Ignore: the "close" listener will clean this socket up.
+        // Debug, not info: this fires once per event per connected socket —
+        // the high-volume path ADR-012 says to keep out of info-level logs.
+        this.log.debug(
+          { connectionId, scope, entityId: event.entityId, sequence: nextSequence },
+          "realtime update delivered",
+        );
+      } catch (err) {
+        this.log.debug(
+          { err, connectionId, scope, entityId: event.entityId },
+          "realtime update delivery failed",
+        );
+        // Ignore beyond logging: the "close" listener will clean this socket up.
       }
     }
   }

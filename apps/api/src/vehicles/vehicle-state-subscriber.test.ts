@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
+import type { FastifyBaseLogger } from "fastify";
 import type { CanonicalTelemetryEvent, VehicleSnapshot } from "@repo/contracts";
 import { InMemoryEventBus } from "../event-bus/in-memory-event-bus.js";
 import type { DomainEvent } from "../event-bus/domain-events.js";
 import type { VehicleRepository } from "./vehicle-repository.js";
 import type { RealtimeGateway } from "../realtime/realtime-gateway.js";
 import { registerVehicleStateSubscriber } from "./vehicle-state-subscriber.js";
+
+function fakeLogger(): FastifyBaseLogger {
+  return { debug: vi.fn() } as unknown as FastifyBaseLogger;
+}
 
 function snapshot(overrides: Partial<VehicleSnapshot> = {}): VehicleSnapshot {
   return {
@@ -49,13 +54,31 @@ describe("registerVehicleStateSubscriber", () => {
     } as unknown as VehicleRepository;
     const gateway = { broadcast: vi.fn() } as unknown as RealtimeGateway;
     const bus = new InMemoryEventBus<DomainEvent>();
-    registerVehicleStateSubscriber(bus, repository, gateway, "fleet:default");
+    const log = fakeLogger();
+    registerVehicleStateSubscriber(
+      bus,
+      repository,
+      gateway,
+      "fleet:default",
+      log,
+    );
 
     await bus.publish({ type: "telemetry.received", event: telemetryEvent() });
 
     expect(upsertFromTelemetry).toHaveBeenCalledOnce();
     expect(applyEnrichment).not.toHaveBeenCalled();
     expect(gateway.broadcast).toHaveBeenCalledOnce();
+    expect(log.debug).toHaveBeenCalledWith(
+      {
+        provider: "opensky",
+        vehicleId: "opensky-abc123",
+        eventId: "8b1b1b1b-1b1b-4b1b-8b1b-1b1b1b1b1b1b",
+        occurredAt: "2026-01-01T00:00:00.000Z",
+        receivedAt: "2026-01-01T00:00:01.000Z",
+        ingestionLagMs: 1000,
+      },
+      "telemetry processed",
+    );
   });
 
   it("routes open-meteo events through applyEnrichment", async () => {
@@ -69,7 +92,13 @@ describe("registerVehicleStateSubscriber", () => {
     } as unknown as VehicleRepository;
     const gateway = { broadcast: vi.fn() } as unknown as RealtimeGateway;
     const bus = new InMemoryEventBus<DomainEvent>();
-    registerVehicleStateSubscriber(bus, repository, gateway, "fleet:default");
+    registerVehicleStateSubscriber(
+      bus,
+      repository,
+      gateway,
+      "fleet:default",
+      fakeLogger(),
+    );
 
     await bus.publish({
       type: "telemetry.received",
@@ -91,7 +120,13 @@ describe("registerVehicleStateSubscriber", () => {
     } as unknown as VehicleRepository;
     const gateway = { broadcast: vi.fn() } as unknown as RealtimeGateway;
     const bus = new InMemoryEventBus<DomainEvent>();
-    registerVehicleStateSubscriber(bus, repository, gateway, "fleet:default");
+    registerVehicleStateSubscriber(
+      bus,
+      repository,
+      gateway,
+      "fleet:default",
+      fakeLogger(),
+    );
 
     await bus.publish({
       type: "telemetry.received",

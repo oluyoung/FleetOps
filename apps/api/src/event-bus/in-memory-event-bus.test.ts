@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
+import type { FastifyBaseLogger } from "fastify";
 import { InMemoryEventBus } from "./in-memory-event-bus.js";
 
 type TestEvent =
   | { type: "a"; value: number }
   | { type: "b"; value: string };
+
+function fakeLogger(): FastifyBaseLogger {
+  return { error: vi.fn() } as unknown as FastifyBaseLogger;
+}
 
 describe("InMemoryEventBus", () => {
   it("delivers a published event to all subscribers of the matching type", async () => {
@@ -33,18 +38,22 @@ describe("InMemoryEventBus", () => {
   });
 
   it("isolates handler errors so other subscribers still run and publish resolves", async () => {
-    const bus = new InMemoryEventBus<TestEvent>();
-    const failing = vi.fn().mockRejectedValue(new Error("boom"));
+    const log = fakeLogger();
+    const bus = new InMemoryEventBus<TestEvent>(log);
+    const error = new Error("boom");
+    const failing = vi.fn().mockRejectedValue(error);
     const succeeding = vi.fn();
     bus.subscribe("a", failing);
     bus.subscribe("a", succeeding);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     await expect(bus.publish({ type: "a", value: 1 })).resolves.toBeUndefined();
 
     expect(failing).toHaveBeenCalledTimes(1);
     expect(succeeding).toHaveBeenCalledTimes(1);
-    errorSpy.mockRestore();
+    expect(log.error).toHaveBeenCalledWith(
+      { err: error, eventType: "a" },
+      "event bus handler failed",
+    );
   });
 
   it("is a no-op when there are no subscribers for the event type", async () => {
