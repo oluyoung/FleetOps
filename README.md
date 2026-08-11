@@ -207,7 +207,30 @@ delivery logging (`connectionId`) run at `debug`, not `info`, so the default
 running the stack at both levels and confirming `debug`-only lines appear
 only with `LOG_LEVEL=debug`. WebSocket connect/disconnect log at `info`
 (one line per connection, not per message) with a per-connection
-`connectionId`. Metrics via `GET /metrics` (Step 16) is next.
+`connectionId`.
+
+Step 16 — metrics — is done: `GET /metrics` (`apps/api/src/observability/metrics.ts`)
+exposes the full ADR-012 metric set via `prom-client` on a dedicated
+`Registry` (no `collectDefaultMetrics()` noise). `telemetry_events_received_total`,
+`telemetry_events_rejected_total`, `telemetry_ingestion_lag_ms`,
+`provider_errors_total`, and `provider_last_success_timestamp` are all
+labelled by `provider` and incremented from `startIngestionLoop` (received/
+lag/last-success on every successful poll) and from each adapter's own
+mapping loop (rejected, since only the adapter sees the raw payload count
+before filtering) — `provider-errors.ts`'s ad-hoc in-memory counter, written
+ahead of this step, is gone now that `provider_errors_total` is the real
+thing. `websocket_connections_active`/`websocket_reconnect_total` and
+`realtime_updates_published_total`/`realtime_delivery_errors_total` are
+incremented from `RealtimeGateway`; `realtime_updates_coalesced_total` is
+registered but stays at zero until Step 17's aggregation boundary exists to
+increment it. Since the server can't distinguish a reconnect from a first
+connect on its own, `apps/web`'s `useFleet` now opens `GET /ws?reconnect=true`
+on every attempt after its first, and `apps/api` reads that query param.
+Verified against the live stack: `/metrics` shows real `opensky`/`open-meteo`/
+`mqtt` counts and non-zero `telemetry_ingestion_lag_ms` buckets while
+`turbo dev` is running, and `websocket_connections_active`/
+`realtime_updates_published_total` increment while a WebSocket client is
+connected.
 
 ## Tooling decisions
 

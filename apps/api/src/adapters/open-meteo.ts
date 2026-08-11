@@ -4,6 +4,7 @@ import { CanonicalTelemetryEventSchema } from "@repo/contracts";
 import type { CanonicalTelemetryEvent, VehicleSnapshot } from "@repo/contracts";
 import type { ProviderAdapter } from "./provider-adapter.js";
 import type { VehicleRepository } from "../vehicles/vehicle-repository.js";
+import { telemetryEventsRejectedTotal } from "../observability/metrics.js";
 
 const OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast";
 
@@ -149,7 +150,14 @@ export class WeatherAdapter implements ProviderAdapter {
 
     const body: unknown = await response.json();
     const parsed = openMeteoResponseSchema.safeParse(body);
-    if (!parsed.success) return [];
+    if (!parsed.success) {
+      const rejectedCount = locations.reduce(
+        (total, location) => total + location.vehicleIds.length,
+        0,
+      );
+      telemetryEventsRejectedTotal.inc({ provider: this.source }, rejectedCount);
+      return [];
+    }
 
     // Open-Meteo preserves request order in the response array.
     const forecasts = Array.isArray(parsed.data) ? parsed.data : [parsed.data];
@@ -159,7 +167,14 @@ export class WeatherAdapter implements ProviderAdapter {
       const forecast = forecasts[i];
       const location = locations[i];
       if (!forecast || !location) continue;
-      events.push(...mapForecastToEvents(location, forecast));
+      const mapped = mapForecastToEvents(location, forecast);
+      if (mapped.length === 0 && location.vehicleIds.length > 0) {
+        telemetryEventsRejectedTotal.inc(
+          { provider: this.source },
+          location.vehicleIds.length,
+        );
+      }
+      events.push(...mapped);
     }
     return events;
   }

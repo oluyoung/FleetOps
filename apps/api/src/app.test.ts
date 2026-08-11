@@ -23,6 +23,32 @@ describe("GET /health", () => {
   });
 });
 
+describe("GET /metrics", () => {
+  it("exposes the Prometheus metric set from ADR-012", async () => {
+    const { app } = await buildApp({
+      db: fakePool(),
+      eventBus: new InMemoryEventBus<DomainEvent>(),
+    });
+    const response = await app.inject({ method: "GET", url: "/metrics" });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("text/plain");
+    for (const metric of [
+      "telemetry_events_received_total",
+      "telemetry_events_rejected_total",
+      "telemetry_ingestion_lag_ms",
+      "provider_errors_total",
+      "provider_last_success_timestamp",
+      "websocket_connections_active",
+      "websocket_reconnect_total",
+      "realtime_updates_published_total",
+      "realtime_updates_coalesced_total",
+      "realtime_delivery_errors_total",
+    ]) {
+      expect(response.body).toContain(metric);
+    }
+  });
+});
+
 describe("GET /vehicles", () => {
   it("returns the current vehicle snapshots", async () => {
     const row = {

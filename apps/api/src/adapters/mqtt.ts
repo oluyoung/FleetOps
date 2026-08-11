@@ -4,6 +4,7 @@ import { z } from "zod";
 import { CanonicalTelemetryEventSchema } from "@repo/contracts";
 import type { CanonicalTelemetryEvent } from "@repo/contracts";
 import type { ProviderAdapter } from "./provider-adapter.js";
+import { telemetryEventsRejectedTotal } from "../observability/metrics.js";
 
 const DEFAULT_TOPIC = "fleet/+/health";
 
@@ -116,10 +117,12 @@ export class MqttAdapter implements ProviderAdapter {
         try {
           raw = JSON.parse(payload.toString());
         } catch {
+          telemetryEventsRejectedTotal.inc({ provider: this.source });
           return;
         }
         const event = mapHealthPayloadToEvent(raw);
         if (event) this.queue.push(event);
+        else telemetryEventsRejectedTotal.inc({ provider: this.source });
       });
 
       // Only the connect/subscribe handshake rejects poll() and triggers the

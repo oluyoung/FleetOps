@@ -5,6 +5,7 @@ import { z } from "zod";
 import { CanonicalTelemetryEventSchema } from "@repo/contracts";
 import type { CanonicalTelemetryEvent } from "@repo/contracts";
 import type { ProviderAdapter } from "./provider-adapter.js";
+import { telemetryEventsRejectedTotal } from "../observability/metrics.js";
 
 const OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all";
 const OPENSKY_TOKEN_URL =
@@ -198,9 +199,14 @@ export class OpenSkyAdapter implements ProviderAdapter {
     if (!parsed.success || !parsed.data.states) return [];
 
     const events: CanonicalTelemetryEvent[] = [];
+    let rejected = 0;
     for (const vector of parsed.data.states) {
       const event = mapStateVectorToEvent(vector);
       if (event) events.push(event);
+      else rejected += 1;
+    }
+    if (rejected > 0) {
+      telemetryEventsRejectedTotal.inc({ provider: this.source }, rejected);
     }
 
     if (!this.fleetVehicleIds) {

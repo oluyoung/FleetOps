@@ -36,11 +36,15 @@ export function useFleet() {
     let reconnectDelay = MIN_RECONNECT_DELAY_MS;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
+    let isReconnect = false;
 
     function connect() {
       if (stopped) return;
       setStatus("connecting");
-      socket = new WebSocket(WS_URL);
+      // Server-side websocket_reconnect_total (ADR-012) can't tell a
+      // reconnect from a first connect on its own — the client declares it.
+      socket = new WebSocket(isReconnect ? `${WS_URL}?reconnect=true` : WS_URL);
+      isReconnect = true;
 
       socket.addEventListener("open", () => {
         reconnectDelay = MIN_RECONNECT_DELAY_MS;

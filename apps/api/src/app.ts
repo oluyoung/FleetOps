@@ -11,6 +11,7 @@ import {
 } from "./vehicles/vehicle-repository.js";
 import { registerVehicleStateSubscriber } from "./vehicles/vehicle-state-subscriber.js";
 import { RealtimeGateway } from "./realtime/realtime-gateway.js";
+import { metricsRegistry } from "./observability/metrics.js";
 
 // Single hardcoded fleet scope for M1 — multi-tenancy is out of scope
 // (RFC-002/ADR-003).
@@ -37,13 +38,26 @@ export async function buildApp(deps: {
     app.log,
   );
 
-  app.get("/ws", { websocket: true }, (socket) => {
-    realtimeGateway.subscribe(DEFAULT_FLEET_SCOPE, socket);
-  });
+  app.get<{ Querystring: { reconnect?: string } }>(
+    "/ws",
+    { websocket: true },
+    (socket, request) => {
+      realtimeGateway.subscribe(
+        DEFAULT_FLEET_SCOPE,
+        socket,
+        request.query.reconnect === "true",
+      );
+    },
+  );
 
   app.get("/health", async () => {
     await deps.db.query("SELECT 1");
     return { status: "ok" };
+  });
+
+  app.get("/metrics", async (_request, reply) => {
+    reply.header("Content-Type", metricsRegistry.contentType);
+    return metricsRegistry.metrics();
   });
 
   app.get("/vehicles", async () => {

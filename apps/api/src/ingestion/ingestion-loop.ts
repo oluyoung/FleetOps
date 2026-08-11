@@ -2,7 +2,12 @@ import type { FastifyBaseLogger } from "fastify";
 import type { ProviderAdapter } from "../adapters/provider-adapter.js";
 import type { EventBus } from "../event-bus/event-bus.js";
 import type { DomainEvent } from "../event-bus/domain-events.js";
-import { recordProviderError } from "../observability/provider-errors.js";
+import {
+  providerErrorsTotal,
+  providerLastSuccessTimestamp,
+  telemetryEventsReceivedTotal,
+  telemetryIngestionLagMs,
+} from "../observability/metrics.js";
 
 export interface IngestionLoopOptions {
   adapter: ProviderAdapter;
@@ -41,12 +46,18 @@ export function startIngestionLoop(options: IngestionLoopOptions): IngestionLoop
       const events = await adapter.poll();
       for (const event of events) {
         await eventBus.publish({ type: "telemetry.received", event });
+        telemetryEventsReceivedTotal.inc({ provider: event.source });
+        telemetryIngestionLagMs.observe(
+          { provider: event.source },
+          Math.max(0, Date.parse(event.receivedAt) - Date.parse(event.occurredAt)),
+        );
       }
+      providerLastSuccessTimestamp.set({ provider: adapter.source }, Date.now() / 1000);
       consecutiveFailures = 0;
       scheduleNext(pollIntervalMs);
     } catch (err) {
       consecutiveFailures += 1;
-      recordProviderError(adapter.source);
+      providerErrorsTotal.inc({ provider: adapter.source });
       log.error(
         { err, source: adapter.source, consecutiveFailures },
         "provider poll failed",

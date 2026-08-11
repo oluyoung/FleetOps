@@ -2,6 +2,12 @@ import crypto from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
 import type { RealtimeEventType } from "@repo/contracts";
 import type { WebSocket } from "@fastify/websocket";
+import {
+  realtimeDeliveryErrorsTotal,
+  realtimeUpdatesPublishedTotal,
+  websocketConnectionsActive,
+  websocketReconnectTotal,
+} from "../observability/metrics.js";
 
 export type RealtimeEnvelope<T> = {
   type: RealtimeEventType;
@@ -25,7 +31,7 @@ export class RealtimeGateway {
 
   constructor(private readonly log: FastifyBaseLogger) {}
 
-  subscribe(scope: string, socket: WebSocket): void {
+  subscribe(scope: string, socket: WebSocket, isReconnect = false): void {
     const connectionId = crypto.randomUUID();
     this.connectionIds.set(socket, connectionId);
 
@@ -35,6 +41,8 @@ export class RealtimeGateway {
       this.connectionsByScope.set(scope, sockets);
     }
     sockets.add(socket);
+    websocketConnectionsActive.inc();
+    if (isReconnect) websocketReconnectTotal.inc();
     this.log.info({ connectionId, scope }, "websocket connected");
 
     socket.on("close", () => {
@@ -42,6 +50,7 @@ export class RealtimeGateway {
       if (sockets!.size === 0) {
         this.connectionsByScope.delete(scope);
       }
+      websocketConnectionsActive.dec();
       this.log.info({ connectionId, scope }, "websocket disconnected");
     });
   }
@@ -77,6 +86,7 @@ export class RealtimeGateway {
       if (socket.readyState !== socket.OPEN) continue;
       try {
         socket.send(serialized);
+        realtimeUpdatesPublishedTotal.inc();
         // Debug, not info: this fires once per event per connected socket —
         // the high-volume path ADR-012 says to keep out of info-level logs.
         this.log.debug(
@@ -84,6 +94,7 @@ export class RealtimeGateway {
           "realtime update delivered",
         );
       } catch (err) {
+        realtimeDeliveryErrorsTotal.inc();
         this.log.debug(
           { err, connectionId, scope, entityId: event.entityId },
           "realtime update delivery failed",
