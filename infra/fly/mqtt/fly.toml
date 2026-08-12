@@ -1,0 +1,17 @@
+# Deploy from the monorepo root:
+#   fly deploy --config infra/fly/mqtt/fly.toml --dockerfile infra/fly/mqtt/Dockerfile
+#
+# Private-network only — no public services block, so this app gets no
+# public IP. It's reachable from other Fly apps in the same org purely via
+# Fly's 6PN WireGuard mesh at fleetops-mqtt.internal:1883 (see MQTT_URL in
+# fleetops-api's and fleetops-telemetry-publisher's secrets).
+
+app = "fleetops-mqtt"
+primary_region = "iad"
+
+[build]
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256

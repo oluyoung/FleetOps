@@ -1,0 +1,19 @@
+server:
+  log_level: info
+
+metrics:
+  global:
+    scrape_interval: 15s
+    remote_write:
+      - url: ${GRAFANA_CLOUD_PROMETHEUS_URL}
+        basic_auth:
+          username: ${GRAFANA_CLOUD_PROMETHEUS_USERNAME}
+          password: ${GRAFANA_CLOUD_API_KEY}
+  configs:
+    - name: fleetops
+      scrape_configs:
+        - job_name: fleetops-api
+          static_configs:
+            # Reached over Fly's 6PN WireGuard mesh — fleetops-api and
+            # fleetops-grafana-agent must be apps in the same Fly org.
+            - targets: ["fleetops-api.internal:4000"]

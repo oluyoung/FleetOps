@@ -39,3 +39,55 @@ jobs:
       - run: npm run migrate --workspace=api -- up
       - run: npm run test
       - run: npm run build
+
+  deploy:
+    needs: checks
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency: deploy-production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+
+      # Migrations run against Supabase before the new image goes live, so a
+      # failed migration blocks the deploy instead of shipping a backend
+      # that expects a schema that isn't there yet.
+      - name: Run database migrations against Supabase
+        run: npm run migrate --workspace=api -- up
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy fleetops-api
+        run: flyctl deploy --config apps/api/fly.toml --dockerfile apps/api/Dockerfile --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      # Only redeployed when their own image changes are relevant — cheap to
+      # run every time at this scale, so no path filtering yet.
+      - name: Deploy fleetops-mqtt
+        run: flyctl deploy --config infra/fly/mqtt/fly.toml --dockerfile infra/fly/mqtt/Dockerfile --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Deploy fleetops-telemetry-publisher
+        run: flyctl deploy --config apps/telemetry-publisher/fly.toml --dockerfile apps/telemetry-publisher/Dockerfile --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Deploy fleetops-grafana-agent
+        run: flyctl deploy --config infra/fly/grafana-agent/fly.toml --dockerfile infra/fly/grafana-agent/Dockerfile --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      # Vercel deploys apps/web itself via its native GitHub integration —
+      # no step needed here.

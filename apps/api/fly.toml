@@ -1,0 +1,36 @@
+# Fly.io app config for the Fastify backend (ADR-011).
+# Deploy from the monorepo root: fly deploy --config apps/api/fly.toml --dockerfile apps/api/Dockerfile
+#
+# Long-running container per ADR-011 — min_machines_running keeps at least
+# one instance warm at all times so WebSocket clients (/ws) don't see cold
+# starts, and so the ingestion loop (OpenSky/Open-Meteo/MQTT polling) never
+# stops running between requests.
+
+app = "fleetops-api"
+primary_region = "iad"
+
+[build]
+
+[env]
+  PORT = "4000"
+  LOG_LEVEL = "info"
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/health"
+    protocol = "http"
+    timeout = "5s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

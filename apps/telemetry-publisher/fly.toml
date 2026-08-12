@@ -1,0 +1,16 @@
+# Deploy from the monorepo root:
+#   fly deploy --config apps/telemetry-publisher/fly.toml --dockerfile apps/telemetry-publisher/Dockerfile
+#
+# Simulated vehicle-health telemetry source (ADR/RFC-001, Milestone 2).
+# No public services — it only connects outbound to fleetops-mqtt.internal.
+# Set MQTT_URL=mqtt://fleetops-mqtt.internal:1883 via `fly secrets set`.
+
+app = "fleetops-telemetry-publisher"
+primary_region = "iad"
+
+[build]
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256
