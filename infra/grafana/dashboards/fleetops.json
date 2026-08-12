@@ -1,12 +1,31 @@
 {
   "title": "FleetOps Telemetry",
   "uid": "fleetops-telemetry",
-  "schemaVersion": 39,
+  "schemaVersion": 42,
   "version": 1,
   "editable": true,
   "timezone": "browser",
   "time": { "from": "now-1h", "to": "now" },
   "refresh": "5s",
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "weekStart": "",
+  "links": [],
+  "tags": [],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": { "list": [] },
   "panels": [
     {
       "id": 1,
@@ -16,6 +35,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "sum(rate(telemetry_events_received_total[1m])) by (provider)",
           "legendFormat": "{{provider}}"
         }
@@ -29,6 +50,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "histogram_quantile(0.95, sum(rate(telemetry_ingestion_lag_ms_bucket[5m])) by (le, provider))",
           "legendFormat": "{{provider}}"
         }
@@ -42,6 +65,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "targets": [
         {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "sum(rate(telemetry_events_rejected_total[5m])) by (provider)",
           "legendFormat": "{{provider}}"
         }
@@ -55,6 +80,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "targets": [
         {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "sum(rate(provider_errors_total[5m])) by (provider)",
           "legendFormat": "{{provider}}"
         }
@@ -66,7 +93,13 @@
       "type": "stat",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
-      "targets": [{ "expr": "websocket_connections_active" }]
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "websocket_connections_active"
+        }
+      ]
     },
     {
       "id": 6,
@@ -76,14 +109,20 @@
       "gridPos": { "h": 8, "w": 16, "x": 8, "y": 16 },
       "targets": [
         {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "rate(realtime_updates_published_total[1m])",
           "legendFormat": "published"
         },
         {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "rate(realtime_updates_coalesced_total[1m])",
           "legendFormat": "coalesced"
         },
         {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "rate(realtime_delivery_errors_total[1m])",
           "legendFormat": "delivery errors"
         }
@@ -109,6 +148,8 @@
       },
       "targets": [
         {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "time() - provider_last_success_timestamp",
           "legendFormat": "{{provider}}"
         }

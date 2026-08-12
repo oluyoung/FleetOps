@@ -1,17 +1,23 @@
-# Deploy from the monorepo root:
-#   fly deploy --config infra/fly/grafana-agent/fly.toml --dockerfile infra/fly/grafana-agent/Dockerfile
+# fly.toml app configuration file generated for fleetops-grafana-agent on 2026-08-12T09:07:47+01:00
 #
-# Secrets required (fly secrets set, scoped to this app):
-#   GRAFANA_CLOUD_PROMETHEUS_URL      e.g. https://prometheus-prod-XX-prod-us-east-0.grafana.net/api/prom/push
-#   GRAFANA_CLOUD_PROMETHEUS_USERNAME the numeric Grafana Cloud stack instance ID
-#   GRAFANA_CLOUD_API_KEY             a Grafana Cloud API key with MetricsPublisher role
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "fleetops-grafana-agent"
-primary_region = "iad"
+app = 'fleetops-grafana-agent'
+primary_region = 'ams'
 
 [build]
+  dockerfile = './Dockerfile'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
 
 [[vm]]
-  cpu_kind = "shared"
+  memory = '256mb'
   cpus = 1
   memory_mb = 256

@@ -6,6 +6,7 @@
 # ship a slim runtime image with no dev dependencies or source files.
 
 FROM node:22-alpine AS base
+RUN npm install -g npm@11.12.1
 
 # --- Prune: compute the minimal workspace subset for apps/api ---
 FROM base AS pruner
@@ -23,9 +24,10 @@ RUN npm ci
 # --- Build: bring in full pruned source, compile TypeScript ---
 FROM base AS builder
 WORKDIR /app
+RUN npm install -g turbo@^2.10.9
 COPY --from=installer /app/ .
 COPY --from=pruner /app/out/full/ .
-RUN npm run build --workspace=api
+RUN turbo run build --filter=api
 
 # --- Runtime: slim image, no dev deps, no source ---
 FROM base AS runner

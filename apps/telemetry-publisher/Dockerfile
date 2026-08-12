@@ -5,6 +5,7 @@
 # rationale. telemetry-publisher has no workspace deps beyond itself.
 
 FROM node:22-alpine AS base
+RUN npm install -g npm@11.12.1
 
 FROM base AS pruner
 WORKDIR /app
