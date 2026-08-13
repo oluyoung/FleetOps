@@ -74,10 +74,15 @@ jobs:
       # Migrations run against Supabase before the new image goes live, so a
       # failed migration blocks the deploy instead of shipping a backend
       # that expects a schema that isn't there yet.
+      #
+      # Uses the direct (non-pooled) connection, not the session-pooler
+      # DATABASE_URL the app uses — the session pooler caps at 15 total
+      # clients, and the always-on fleetops-api machine's own pg.Pool can
+      # hold most of that budget, leaving no room for this one-off client.
       - name: Run database migrations against Supabase
         run: npm run migrate --workspace=api -- up
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
