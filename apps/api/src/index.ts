@@ -79,7 +79,7 @@ const mqttIngestion = startIngestionLoop({
 });
 
 app
-  .listen({ port: env.port, host: "0.0.0.0" })
+  .listen({ port: env.port, host: "::" })
   .catch((error: unknown) => {
     app.log.error(error);
     process.exit(1);
