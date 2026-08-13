@@ -21,36 +21,20 @@ type VehicleHealth = {
 const MQTT_URL = process.env.MQTT_URL ?? "mqtt://localhost:1883";
 const PUBLISH_INTERVAL_MS = 1000;
 
-const vehicles: VehicleHealth[] = [
-  {
-    vehicleId: "vehicle-001",
-    batteryPercent: 88,
-    motorTemperatureC: 42,
-    connectivity: "good",
-    heartbeatAt: new Date().toISOString(),
-    sequence: 0,
-  },
-  {
-    vehicleId: "vehicle-002",
-    batteryPercent: 67,
-    motorTemperatureC: 47,
-    connectivity: "good",
-    heartbeatAt: new Date().toISOString(),
-    sequence: 0,
-  },
-  {
-    vehicleId: "vehicle-003",
-    batteryPercent: 51,
-    motorTemperatureC: 45,
-    connectivity: "good",
-    heartbeatAt: new Date().toISOString(),
-    sequence: 0,
-  },
-];
-
 function randomBetween(min: number, max: number): number {
   return Math.random() * (max - min) + min;
 }
+
+const FLEET_SIZE = 20;
+
+const vehicles: VehicleHealth[] = Array.from({ length: FLEET_SIZE }, (_, index) => ({
+  vehicleId: `vehicle-${String(index + 1).padStart(3, "0")}`,
+  batteryPercent: Number(randomBetween(40, 95).toFixed(2)),
+  motorTemperatureC: Number(randomBetween(38, 52).toFixed(1)),
+  connectivity: "good",
+  heartbeatAt: new Date().toISOString(),
+  sequence: 0,
+}));
 
 function nextTelemetry(current: VehicleHealth): VehicleHealth {
   const batteryDrain = randomBetween(0.02, 0.12);

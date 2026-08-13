@@ -1,21 +1,18 @@
 "use client";
 
+import { useState } from "react";
+import dynamic from "next/dynamic";
 import type { ProviderHealth, VehicleSnapshot } from "@repo/contracts";
 import { useFleet } from "../lib/use-fleet";
 import { useProviderHealth } from "../lib/use-provider-health";
+import { formatCoordinate, formatLastSeen, formatNumber } from "../lib/format";
+import { VehicleDetailsModal } from "../components/VehicleDetailsModal";
 import styles from "./page.module.css";
 
-function formatCoordinate(value: number | null): string {
-  return value === null ? "—" : value.toFixed(4);
-}
-
-function formatNumber(value: number | null, unit: string): string {
-  return value === null ? "—" : `${Math.round(value)} ${unit}`;
-}
-
-function formatLastSeen(iso: string): string {
-  return new Date(iso).toLocaleTimeString();
-}
+const FleetMap = dynamic(() => import("../components/FleetMap"), {
+  ssr: false,
+  loading: () => <p>Loading map…</p>,
+});
 
 function ProviderHealthBadge({ health }: { health: ProviderHealth }) {
   return (
@@ -45,6 +42,8 @@ function VehicleRow({ vehicle }: { vehicle: VehicleSnapshot }) {
 export default function Home() {
   const { data: vehicles, isLoading, isError, connectionStatus } = useFleet();
   const { data: providerHealth } = useProviderHealth();
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const selectedVehicle = vehicles?.find((v) => v.id === selectedVehicleId) ?? null;
 
   return (
     <main className={styles.page}>
@@ -62,6 +61,16 @@ export default function Home() {
           ))}
         </div>
       )}
+
+      <FleetMap
+        selectedVehicleId={selectedVehicleId}
+        onSelectVehicle={setSelectedVehicleId}
+      />
+
+      <VehicleDetailsModal
+        vehicle={selectedVehicle}
+        onClose={() => setSelectedVehicleId(null)}
+      />
 
       {isLoading && <p>Loading fleet…</p>}
       {isError && <p>Failed to load fleet snapshot.</p>}

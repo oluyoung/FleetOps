@@ -75,6 +75,13 @@ sync by both. A header badge shows the socket state
 (`connecting`/`live`/`closed`), and reconnects refetch the REST snapshot
 first in case anything was missed.
 
+Above the table, a Leaflet map (OpenStreetMap tiles) plots every vehicle with
+known coordinates as a marker colored by connectivity status
+(good/degraded/offline/unknown); markers move live as WebSocket deltas update
+positions, reading from the same fetch/cache as the table. Clicking a marker
+highlights it and opens a text-only details modal (no icons) with that
+vehicle's full snapshot.
+
 ## Workspace layout
 
 - `apps/web` — Next.js fleet dashboard

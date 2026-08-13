@@ -1,0 +1,23 @@
+# fly.toml app configuration file for fleetops-grafana-alloy
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+# Deliberately no [http_service] block: this app only scrapes fleetops-api
+# over Fly's 6PN mesh and remote_writes out to Grafana Cloud — it never
+# receives inbound traffic. `fly launch` adds an [http_service] with
+# auto_stop_machines/min_machines_running=0 by default, which stops the
+# machine whenever nothing hits its (unused) public port — that silently
+# stopped this collector for ~7 minutes on 2026-08-13 (see fly logs), losing
+# scrape/push coverage for that window. Removing it keeps the machine
+# running continuously, matching apps/api's fly.toml (min_machines_running = 1).
+
+app = 'fleetops-grafana-alloy'
+primary_region = 'ams'
+
+[build]
+  dockerfile = './Dockerfile'
+
+[[vm]]
+  memory = '256mb'
+  cpus = 1
+  memory_mb = 256

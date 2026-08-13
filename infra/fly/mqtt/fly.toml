@@ -1,21 +1,22 @@
-# fly.toml app configuration file generated for fleetops-mqtt on 2026-08-12T08:48:11+01:00
+# fly.toml app configuration file for fleetops-mqtt
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
+# Deliberately no [http_service] block: Mosquitto only serves MQTT on 1883,
+# reached privately over Fly's 6PN mesh by fleetops-api and
+# fleetops-telemetry-publisher — it never receives inbound HTTP traffic.
+# `fly launch` adds an [http_service] with auto_stop_machines/
+# min_machines_running=0 by default, pointed at an unused port 8080; since
+# nothing ever hits that port, Fly kept autostopping this broker (same bug
+# fixed on fleetops-grafana-alloy — see its fly.toml). Removing it keeps the
+# broker running continuously, matching apps/api's fly.toml
+# (min_machines_running = 1).
 
 app = 'fleetops-mqtt'
 primary_region = 'ams'
 
 [build]
   dockerfile = './Dockerfile'
-
-[http_service]
-  internal_port = 8080
-  force_https = true
-  auto_stop_machines = 'stop'
-  auto_start_machines = true
-  min_machines_running = 0
-  processes = ['app']
 
 [[vm]]
   memory = '256mb'

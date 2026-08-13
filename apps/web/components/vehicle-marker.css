@@ -1,0 +1,28 @@
+.vehicleMarker {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.vehicleMarker[data-connectivity="good"] {
+  background: #1a9e4a;
+}
+
+.vehicleMarker[data-connectivity="degraded"] {
+  background: #d98c1f;
+}
+
+.vehicleMarker[data-connectivity="offline"] {
+  background: #b3261e;
+}
+
+.vehicleMarker[data-connectivity="unknown"] {
+  background: #8a8f98;
+}
+
+.vehicleMarkerSelected {
+  outline: 3px solid #1565d8;
+  outline-offset: 2px;
+}

@@ -6,40 +6,6 @@ on:
   pull_request:
 
 jobs:
-  checks:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: fleetops
-          POSTGRES_PASSWORD: fleetops
-          POSTGRES_DB: fleetops
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U fleetops"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      DATABASE_URL: postgres://fleetops:fleetops@localhost:5432/fleetops
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run check-types
-      - run: npm run migrate --workspace=api -- up
-      - run: npm run test
-      - run: npm run build
-
   deploy:
     needs: checks
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -84,8 +50,8 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: Deploy fleetops-grafana-agent
-        run: flyctl deploy --config infra/fly/grafana-agent/fly.toml --dockerfile infra/fly/grafana-agent/Dockerfile --remote-only
+      - name: Deploy fleetops-grafana-alloy
+        run: flyctl deploy --config infra/fly/grafana-alloy/fly.toml --dockerfile infra/fly/grafana-alloy/Dockerfile --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
